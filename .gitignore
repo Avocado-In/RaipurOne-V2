@@ -1,0 +1,224 @@
+# =========================================================
+# Python
+# =========================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+pip-wheel-metadata/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache/
+.pytest_cache/
+coverage.xml
+*.cover
+
+# Type checkers
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+
+# Linting
+.ruff_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# SQLite
+*.sqlite3
+*.db
+
+# PyInstaller
+*.manifest
+*.spec
+
+# =========================================================
+# Node.js / JavaScript
+# =========================================================
+
+node_modules/
+
+# Package Managers
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# Lockfiles (Uncomment if you don't want them)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Build folders
+dist/
+build/
+out/
+
+# Frameworks
+.next/
+.nuxt/
+.svelte-kit/
+.parcel-cache/
+
+# Vite
+.vite/
+
+# Coverage
+coverage/
+*.lcov
+
+# Cache
+.cache/
+.eslintcache
+
+# Environment Variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# =========================================================
+# React / Next.js
+# =========================================================
+
+.next/
+.next-cache/
+
+# =========================================================
+# TypeScript
+# =========================================================
+
+*.tsbuildinfo
+
+# =========================================================
+# Miscellaneous
+# =========================================================
+
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+
+# Runtime files
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# =========================================================
+# Docker
+# =========================================================
+
+.docker/
+docker-compose.override.yml
+
+# =========================================================
+# Terraform
+# =========================================================
+
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# =========================================================
+# Secrets
+# =========================================================
+
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# =========================================================
+# Uploads / Generated Data
+# =========================================================
+
+uploads/
+media/
+temp/
+tmp/
+generated/
+saved_model/
+models/
+checkpoints/
+logs/
+
+# =========================================================
+# Machine Learning
+# =========================================================
+
+*.h5
+*.keras
+*.onnx
+*.pt
+*.pth
+*.ckpt
+*.joblib
+*.pickle
+*.pkl
+*.npy
+*.npz
+
+# TensorBoard
+runs/
+tensorboard/
+
+# Dataset (Uncomment if datasets are large)
+# data/
+# datasets/

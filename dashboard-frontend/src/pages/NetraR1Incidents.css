@@ -1,0 +1,241 @@
+/* Netra.R1 Incidents Viewer Styles */
+
+.netra-incidents-container {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.netra-header {
+  margin-bottom: 2rem;
+}
+
+.netra-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.netra-stat-card {
+  border-radius: 1rem;
+  padding: 1.5rem;
+  color: white;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s;
+}
+
+.netra-stat-card:hover {
+  transform: translateY(-2px);
+}
+
+.netra-filters {
+  background: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.netra-incidents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+}
+
+.netra-incident-card {
+  background: var(--bg-primary);
+  border: 2px solid var(--border-color);
+  border-radius: 1rem;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.netra-incident-card:hover {
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  border-color: var(--text-primary);
+  transform: translateY(-4px);
+}
+
+.netra-incident-image {
+  height: 200px;
+  position: relative;
+  background: var(--bg-secondary);
+}
+
+.netra-incident-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.netra-badge {
+  position: absolute;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.netra-priority-badge {
+  top: 0.75rem;
+  right: 0.75rem;
+}
+
+.netra-evidence-badges {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.netra-incident-content {
+  padding: 1rem;
+}
+
+.netra-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  backdrop-filter: blur(4px);
+}
+
+.netra-modal {
+  background: var(--bg-primary);
+  border: 2px solid var(--border-color);
+  border-radius: 1rem;
+  max-width: 1000px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.netra-modal-header {
+  position: sticky;
+  top: 0;
+  background: var(--bg-primary);
+  border-bottom: 2px solid var(--border-color);
+  padding: 1.5rem;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.netra-modal-content {
+  padding: 1.5rem;
+}
+
+.netra-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+}
+
+.netra-evidence-item {
+  border: 2px solid var(--border-color);
+  border-radius: 1rem;
+  padding: 1rem;
+}
+
+.netra-action-buttons {
+  display: flex;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 2px solid var(--border-color);
+}
+
+.netra-btn {
+  flex: 1;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.netra-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.netra-btn-confirm {
+  background: #10b981;
+  color: white;
+}
+
+.netra-btn-confirm:hover {
+  background: #059669;
+}
+
+.netra-btn-reject {
+  background: #6b7280;
+  color: white;
+}
+
+.netra-btn-reject:hover {
+  background: #4b5563;
+}
+
+/* Loading State */
+.netra-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  gap: 1rem;
+}
+
+.netra-spinner {
+  width: 4rem;
+  height: 4rem;
+  border: 4px solid var(--border-color);
+  border-top-color: var(--text-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .netra-incidents-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .netra-evidence-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .netra-action-buttons {
+    flex-direction: column;
+  }
+
+  .netra-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .netra-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}

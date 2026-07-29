@@ -1,0 +1,677 @@
+.netra-analyzer {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  padding: 2rem;
+}
+
+.dark .netra-analyzer {
+  background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+}
+
+/* Header */
+.netra-header {
+  max-width: 1400px;
+  margin: 0 auto 2rem;
+}
+
+.netra-title {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.netra-icon-badge {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 1rem;
+  border-radius: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+}
+
+/* Content */
+.netra-content {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Upload Section */
+.netra-upload-section {
+  margin-bottom: 2rem;
+}
+
+.netra-upload-card {
+  background: white;
+  border-radius: 1.5rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.dark .netra-upload-card {
+  background: #1a1a1a;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.netra-upload-area {
+  padding: 4rem 2rem;
+  text-align: center;
+  border: 3px dashed #cbd5e0;
+  border-radius: 1.5rem;
+  margin: 2rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.netra-upload-area:hover {
+  border-color: #667eea;
+  background: rgba(102, 126, 234, 0.05);
+}
+
+.dark .netra-upload-area {
+  border-color: #333;
+}
+
+.dark .netra-upload-area:hover {
+  border-color: #667eea;
+  background: rgba(102, 126, 234, 0.1);
+}
+
+.netra-upload-icon {
+  display: inline-flex;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 1rem;
+  color: white;
+  margin-bottom: 1.5rem;
+}
+
+.netra-upload-info {
+  display: flex;
+  gap: 1.5rem;
+  justify-content: center;
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
+/* Video Preview */
+.netra-video-preview {
+  padding: 2rem;
+}
+
+.netra-video-player {
+  width: 100%;
+  max-height: 500px;
+  border-radius: 1rem;
+  background: #000;
+  margin-bottom: 1.5rem;
+}
+
+.netra-video-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.dark .netra-video-info {
+  background: #0f0f0f;
+}
+
+.netra-file-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.dark .netra-file-name {
+  color: white;
+}
+
+.netra-file-size {
+  font-size: 0.875rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.netra-action-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+/* Analyzing State */
+.netra-analyzing {
+  text-align: center;
+  padding: 2rem;
+}
+
+.netra-progress-container {
+  margin-bottom: 2rem;
+}
+
+.netra-progress-bar {
+  width: 100%;
+  height: 12px;
+  background: #e2e8f0;
+  border-radius: 1rem;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.dark .netra-progress-bar {
+  background: #0f0f0f;
+}
+
+.netra-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  border-radius: 1rem;
+  transition: width 0.5s ease;
+}
+
+.netra-progress-text {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 0.5rem;
+}
+
+.dark .netra-progress-text {
+  color: white;
+}
+
+.netra-progress-percent {
+  font-size: 2rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.netra-analyzing-icon {
+  display: inline-flex;
+  color: #667eea;
+}
+
+/* Buttons */
+.netra-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1.75rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  border: none;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.netra-btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.netra-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+}
+
+.netra-btn-secondary {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.dark .netra-btn-secondary {
+  background: #0f0f0f;
+  color: white;
+}
+
+.netra-btn-secondary:hover {
+  background: #e2e8f0;
+  transform: translateY(-2px);
+}
+
+.dark .netra-btn-secondary:hover {
+  background: #1a1a1a;
+}
+
+.netra-btn-sm {
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+}
+
+/* Results Section */
+.netra-results {
+  animation: fadeIn 0.5s ease;
+}
+
+/* Analyzed Video Section */
+.netra-analyzed-video-section {
+  background: white;
+  border-radius: 1.5rem;
+  padding: 2rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+  margin-bottom: 2rem;
+}
+
+.dark .netra-analyzed-video-section {
+  background: #1a1a1a;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.netra-analyzed-video-player {
+  margin-top: 1rem;
+}
+
+.netra-analyzed-video-player .netra-video-player {
+  width: 100%;
+  max-height: 600px;
+  border-radius: 1rem;
+  background: #000;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Summary Cards */
+.netra-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.netra-summary-card {
+  background: white;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: transform 0.3s ease;
+}
+
+.netra-summary-card:hover {
+  transform: translateY(-4px);
+}
+
+.dark .netra-summary-card {
+  background: #1a1a1a;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.netra-card-icon {
+  padding: 1rem;
+  border-radius: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.netra-card-incidents .netra-card-icon {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.netra-card-faces .netra-card-icon {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
+.netra-card-garbage .netra-card-icon {
+  background: rgba(251, 146, 60, 0.1);
+  color: #fb923c;
+}
+
+.netra-card-confidence .netra-card-icon {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+}
+
+.netra-card-content {
+  flex: 1;
+}
+
+.netra-card-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1;
+  margin-bottom: 0.25rem;
+}
+
+.dark .netra-card-value {
+  color: white;
+}
+
+.netra-card-label {
+  font-size: 0.875rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* Incidents Section */
+.netra-incidents-section {
+  background: white;
+  border-radius: 1.5rem;
+  padding: 2rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+}
+
+.dark .netra-incidents-section {
+  background: #1a1a1a;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.netra-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #f1f5f9;
+}
+
+.dark .netra-section-header {
+  border-bottom-color: #0f0f0f;
+}
+
+/* Incidents Grid */
+.netra-incidents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 1.5rem;
+}
+
+.netra-incident-card {
+  background: #f8fafc;
+  border-radius: 1rem;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.netra-incident-card:hover {
+  border-color: #667eea;
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.2);
+}
+
+.dark .netra-incident-card {
+  background: #0f0f0f;
+}
+
+.netra-incident-image {
+  position: relative;
+  width: 100%;
+  height: 200px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.dark .netra-incident-image {
+  background: #000;
+}
+
+.netra-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.netra-img-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.netra-incident-badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.netra-incident-details {
+  padding: 1.25rem;
+}
+
+.netra-incident-time {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dark .netra-incident-time {
+  border-bottom-color: #1a1a1a;
+}
+
+.netra-time-label {
+  font-size: 0.875rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.netra-time-value {
+  font-size: 0.875rem;
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.dark .netra-time-value {
+  color: white;
+}
+
+.netra-incident-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.netra-info-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
+.netra-confidence-badge {
+  background: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+/* Culprit Section */
+.netra-culprit-section {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: white;
+  border-radius: 0.75rem;
+  border: 2px solid #667eea;
+}
+
+.dark .netra-culprit-section {
+  background: #1a1a1a;
+}
+
+.netra-culprit-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #667eea;
+  margin-bottom: 0.75rem;
+}
+
+.netra-culprit-face {
+  text-align: center;
+}
+
+.netra-person-img {
+  width: 100%;
+  max-width: 200px;
+  height: auto;
+  object-fit: contain;
+  border-radius: 0.5rem;
+  border: 3px solid #667eea;
+}
+
+.netra-face-img {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 0.5rem;
+  border: 3px solid #667eea;
+}
+
+/* Face Closeup Section */
+.netra-face-section {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: white;
+  border-radius: 0.75rem;
+  border: 2px solid #3b82f6;
+}
+
+.dark .netra-face-section {
+  background: #1a1a1a;
+}
+
+.netra-face-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #3b82f6;
+  margin-bottom: 0.75rem;
+}
+
+.netra-face-container {
+  text-align: center;
+}
+
+/* Evidence Actions */
+.netra-evidence-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.netra-evidence-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.625rem;
+  background: #667eea;
+  color: white;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.netra-evidence-btn:hover {
+  background: #764ba2;
+  transform: translateY(-2px);
+}
+
+/* No Results */
+.netra-no-results {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: white;
+  border-radius: 1.5rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+}
+
+.dark .netra-no-results {
+  background: #1a1a1a;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .netra-analyzer {
+    padding: 1rem;
+  }
+
+  .netra-title {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .netra-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .netra-incidents-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .netra-section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .netra-action-buttons {
+    flex-direction: column;
+  }
+
+  .netra-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* Animations */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}

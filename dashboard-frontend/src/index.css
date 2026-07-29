@@ -1,0 +1,159 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-bg: 250, 250, 250;
+    --color-surface: 255, 255, 255;
+    --color-border: 224, 224, 224;
+    --color-text-primary: 26, 26, 26;
+    --color-text-secondary: 102, 102, 102;
+    --color-text-tertiary: 153, 153, 153;
+    
+    /* Theme Variables for Components */
+    --background: #fafafa;
+    --surface-color: #ffffff;
+    --card-bg: #ffffff;
+    --border-color: #e0e0e0;
+    --text-primary: #1a1a1a;
+    --text-secondary: #666666;
+    --primary-color: #3b82f6;
+    --secondary-color: #f3f4f6;
+    --secondary-hover: #e5e7eb;
+    --success-color: #10b981;
+    --warning-color: #f59e0b;
+    --error-color: #ef4444;
+  }
+
+  [data-theme="light"] {
+    --color-bg: 250, 250, 250;
+    --color-surface: 255, 255, 255;
+    --color-border: 224, 224, 224;
+    --color-text-primary: 26, 26, 26;
+    --color-text-secondary: 102, 102, 102;
+    --color-text-tertiary: 153, 153, 153;
+    
+    --background: #fafafa;
+    --surface-color: #ffffff;
+    --card-bg: #ffffff;
+    --border-color: #e0e0e0;
+    --text-primary: #1a1a1a;
+    --text-secondary: #666666;
+    --primary-color: #3b82f6;
+    --secondary-color: #f3f4f6;
+    --secondary-hover: #e5e7eb;
+    --success-color: #10b981;
+    --warning-color: #f59e0b;
+    --error-color: #ef4444;
+  }
+
+  [data-theme="dark"] {
+    --color-bg: 10, 10, 10;
+    --color-surface: 26, 26, 26;
+    --color-border: 42, 42, 42;
+    --color-text-primary: 255, 255, 255;
+    --color-text-secondary: 179, 179, 179;
+    --color-text-tertiary: 128, 128, 128;
+    
+    --background: #0a0a0a;
+    --surface-color: #1a1a1a;
+    --card-bg: #1f1f1f;
+    --border-color: #2a2a2a;
+    --text-primary: #ffffff;
+    --text-secondary: #b3b3b3;
+    --primary-color: #3b82f6;
+    --secondary-color: #2a2a2a;
+    --secondary-hover: #333333;
+    --success-color: #10b981;
+    --warning-color: #f59e0b;
+    --error-color: #ef4444;
+  }
+
+  html {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: rgb(var(--color-bg));
+    color: rgb(var(--color-text-primary));
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .transition-theme {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 300ms;
+  }
+
+  /* Custom animations for ticket card modal */
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes slide-up-fade {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.2s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scale-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .animate-slide-up-fade {
+    animation: slide-up-fade 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

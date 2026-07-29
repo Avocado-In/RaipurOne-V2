@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="R1 Dashboard - Nagar Nigam Dashboard"
+    />
+    <title>R1 Dashboard</title>
+    
+    <!-- Inline script to apply theme before paint - prevents FOUC -->
+    <script>
+      (function() {
+        var storageKey = 'r1_theme';
+        var theme = localStorage.getItem(storageKey) || 'light';
+        var root = document.documentElement;
+        
+        if (theme === 'dark') {
+          root.classList.add('dark');
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>
