@@ -189,6 +189,16 @@ export const submissionAPI = {
     axiosInstance.post(`/worker/submissions/${submissionId}/reject`, { review_notes: reviewNotes }),
 };
 
+// Civic announcements to citizens. Telegram is the only channel this system can
+// actually deliver on, so it is the only one the dashboard offers.
+export const broadcastAPI = {
+  getSubscribers: (signal) => axiosInstance.get('/notifications/subscribers', { signal }),
+
+  getHistory: (signal) => axiosInstance.get('/notifications/history', { signal }),
+
+  send: (payload) => axiosInstance.post('/notifications/send', payload, { timeout: 120000 }),
+};
+
 export const geminiAPI = {
   transcribeImage: (imageUrl, signal) => {
     return axiosInstance.post('/gemini/transcribe', { imageUrl }, { signal });

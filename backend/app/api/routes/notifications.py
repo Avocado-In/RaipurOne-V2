@@ -1,14 +1,17 @@
-﻿import logging
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
 from typing import Any, List
 
 import httpx
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
+from typing import Annotated
 
 from app.core.config import settings
+from app.core.domain import PriorityLiteral
+from app.core.security import CurrentUser, require_admin, require_staff
 
 logger = logging.getLogger("raipurone.notifications")
 router = APIRouter()
@@ -134,3 +137,90 @@ def list_notifications():
 def create_notification(payload: NotificationCreateRequest):
     return add_notification(payload.title, payload.message, payload.severity, payload.complaint_id)
 
+
+# --- Civic broadcasts -------------------------------------------------------
+#
+# These back the dashboard's Push Notifications screen. The screen used to offer FCM and
+# WhatsApp alongside Telegram; neither had an implementation behind it, so a broadcast
+# reported as sent to three channels had in fact reached nobody at all. Telegram is the
+# only channel this system can actually deliver on, so it is the only one offered.
+
+
+class BroadcastRequest(BaseModel):
+    title: str = Field(min_length=3, max_length=200)
+    message: str = Field(min_length=5, max_length=3000)
+    category: str = Field(default="alert", max_length=40)
+    priority: PriorityLiteral = "medium"
+
+
+@router.get("/subscribers")
+def count_subscribers(user: Annotated[CurrentUser, Depends(require_staff)]):
+    """How many citizens a broadcast can actually reach right now."""
+    from app.services import broadcast
+
+    try:
+        telegram = broadcast.audience_size()
+    except broadcast.BroadcastUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {
+        "success": True,
+        "subscribers": {"telegram": telegram, "total": telegram},
+        "channels": ["telegram"],
+    }
+
+
+@router.get("/history")
+def broadcast_history(user: Annotated[CurrentUser, Depends(require_staff)]):
+    from app.services import broadcast
+
+    try:
+        rows = broadcast.history()
+    except broadcast.BroadcastUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"success": True, "notifications": rows}
+
+
+@router.post("/send")
+def send_broadcast(payload: BroadcastRequest, user: Annotated[CurrentUser, Depends(require_admin)]):
+    """Send one announcement to every citizen who has used the R1 bot.
+
+    Administrator only, and deliberately not undoable-looking: once these messages leave
+    they are in people's chats. The response reports what actually happened per citizen
+    rather than assuming success.
+    """
+    from app.services import broadcast
+
+    try:
+        result = broadcast.send_broadcast(payload.title, payload.message, payload.priority)
+    except broadcast.BroadcastUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    if result.recipients == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="Nobody has used the Telegram bot yet, so there is no one to broadcast to.",
+        )
+
+    record = None
+    try:
+        record = broadcast.record(
+            payload.title, payload.message, payload.category, payload.priority, result, user.user_id
+        )
+    except broadcast.BroadcastUnavailable as exc:
+        # The messages have already gone out; losing the log entry must not read as a
+        # failed send, or an operator will send the whole thing again.
+        logger.warning("Broadcast delivered but could not be recorded: %s", exc)
+
+    add_notification(
+        "Broadcast sent",
+        f"{payload.title} reached {result.delivered} of {result.recipients} citizens.",
+        "success" if result.failed == 0 else "warning",
+    )
+
+    return {
+        "success": True,
+        "sent_count": result.delivered,
+        "recipients": result.recipients,
+        "failed": result.failed,
+        "broadcast": record,
+    }

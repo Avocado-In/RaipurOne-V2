@@ -1,532 +1,402 @@
-import React, { useState, useEffect } from 'react';
-import { Send, Users, Bell, AlertTriangle, Droplets, Zap, Activity, CheckCircle, XCircle, Clock } from 'lucide-react';
-import axios from 'axios';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Send, Users, AlertTriangle, Droplets, Zap, Activity, CheckCircle, XCircle } from 'lucide-react';
+import { broadcastAPI } from '../api';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+// Civic broadcasts to citizens.
+//
+// The audience is not a mailing list: it is every person who has filed a complaint
+// through the R1 Telegram bot. They opened that conversation themselves, which is both
+// why we can reach them and the only reason it is reasonable to.
+//
+// This screen used to offer FCM and WhatsApp next to Telegram. Neither had anything
+// behind it, so "sent to 3 channels" meant one channel delivered and two silently did
+// nothing. Telegram is what this system can actually deliver on, so it is what is on
+// offer here.
 
-const PushNotifications = () => {
-  const [formData, setFormData] = useState({
-    title: '',
-    message: '',
+const TELEGRAM_ICON = (
+  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.053 5.56-5.023c.242-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.654-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.941z" />
+  </svg>
+);
+
+const TEMPLATES = [
+  {
+    id: 'malaria',
+    title: '🦟 Malaria Outbreak Alert',
+    message:
+      'Health authorities have detected increased malaria cases in your area. Please take preventive measures and use mosquito nets.',
+    category: 'health',
+    priority: 'high',
+    icon: Activity,
+  },
+  {
+    id: 'water',
+    title: '💧 Water Supply Interruption',
+    message:
+      'Water supply will be interrupted in your area on [DATE] from [TIME] for maintenance work. Please store water in advance.',
+    category: 'utility',
+    priority: 'medium',
+    icon: Droplets,
+  },
+  {
+    id: 'power',
+    title: '⚡ Power Outage Notice',
+    message:
+      'Scheduled power maintenance in your area on [DATE] from [TIME]. We apologise for the inconvenience.',
+    category: 'utility',
+    priority: 'medium',
+    icon: Zap,
+  },
+  {
+    id: 'civic',
+    title: '⚠️ Civic Warning',
+    message:
+      'Important civic announcement: [DETAILS]. Please follow the guidelines issued by the municipal authorities.',
     category: 'alert',
     priority: 'medium',
-    channels: {
-      telegram: true,
-      whatsapp: true,
-      inApp: true,
-    },
-  });
+    icon: AlertTriangle,
+  },
+  {
+    id: 'disease_alert',
+    title: '🏥 Disease Alert',
+    message:
+      'Health advisory: Cases of [DISEASE] reported in [AREA]. Please maintain hygiene and consult a doctor if you experience symptoms.',
+    category: 'health',
+    priority: 'high',
+    icon: Activity,
+  },
+];
 
-  const [notificationHistory, setNotificationHistory] = useState([]);
-  const [subscriberCount, setSubscriberCount] = useState({
-    telegram: 0,
-    whatsapp: 0,
-    inApp: 0,
-    total: 0,
-  });
-  const [loading, setLoading] = useState(false);
+const EMPTY_FORM = { title: '', message: '', category: 'alert', priority: 'medium' };
+
+const errorText = (error, fallback) =>
+  error?.response?.data?.detail || error?.response?.data?.message || error?.message || fallback;
+
+const when = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString();
+};
+
+const priorityClass = (priority) =>
+  ({
+    critical: 'text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400',
+    high: 'text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400',
+    medium: 'text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20 dark:text-yellow-400',
+    low: 'text-green-600 bg-green-50 dark:bg-green-900/20 dark:text-green-400',
+  })[priority] || 'text-gray-600 bg-gray-50 dark:bg-gray-900/20 dark:text-gray-400';
+
+const PushNotifications = () => {
+  const [formData, setFormData] = useState(EMPTY_FORM);
+  const [history, setHistory] = useState([]);
+  const [reachable, setReachable] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Notification templates
-  const templates = [
-    {
-      id: 'malaria',
-      title: '🦟 Malaria Outbreak Alert',
-      message: 'Health authorities have detected increased malaria cases in your area. Please take preventive measures and use mosquito nets.',
-      category: 'health',
-      priority: 'high',
-      icon: Activity,
-    },
-    {
-      id: 'water_cutoff',
-      title: '💧 Water Supply Interruption',
-      message: 'Water supply will be interrupted on [DATE] from [TIME] to [TIME] for maintenance work. Please store water accordingly.',
-      category: 'utility',
-      priority: 'high',
-      icon: Droplets,
-    },
-    {
-      id: 'electricity_cutoff',
-      title: '⚡ Power Outage Notice',
-      message: 'Scheduled power maintenance on [DATE] from [TIME] to [TIME] in [AREA]. Please plan accordingly.',
-      category: 'utility',
-      priority: 'medium',
-      icon: Zap,
-    },
-    {
-      id: 'civic_warning',
-      title: '⚠️ Civic Warning',
-      message: 'Important civic announcement: [DETAILS]. Please follow the guidelines issued by the municipal authorities.',
-      category: 'alert',
-      priority: 'medium',
-      icon: AlertTriangle,
-    },
-    {
-      id: 'disease_alert',
-      title: '🏥 Disease Alert',
-      message: 'Health advisory: Cases of [DISEASE] reported in [AREA]. Please maintain hygiene and consult a doctor if you experience symptoms.',
-      category: 'health',
-      priority: 'high',
-      icon: Activity,
-    },
-  ];
-
-  // Load notification history and subscriber count
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
+    setErrorMessage('');
     try {
-      const [historyRes, subscribersRes] = await Promise.all([
-        axios.get(`${API_URL}/notifications/history`),
-        axios.get(`${API_URL}/notifications/subscribers`),
+      const [subscribers, past] = await Promise.all([
+        broadcastAPI.getSubscribers(),
+        broadcastAPI.getHistory(),
       ]);
-
-      setNotificationHistory(historyRes.data.notifications || []);
-      setSubscriberCount(subscribersRes.data.subscribers || {
-        telegram: 0,
-        whatsapp: 0,
-        inApp: 0,
-        total: 0,
-      });
+      setReachable(subscribers.data?.subscribers?.telegram ?? 0);
+      setHistory(past.data?.notifications || []);
     } catch (error) {
-      console.error('Error loading data:', error);
-      setErrorMessage('Failed to load notification data');
+      setErrorMessage(errorText(error, 'Could not load broadcast data.'));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleTemplateSelect = (template) => {
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const applyTemplate = (template) =>
     setFormData({
-      ...formData,
       title: template.title,
       message: template.message,
       category: template.category,
       priority: template.priority,
     });
+
+  const handleInputChange = (event) => {
+    const { name, value } = event.target;
+    setFormData((previous) => ({ ...previous, [name]: value }));
   };
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: value,
-    });
-  };
-
-  const handleChannelToggle = (channel) => {
-    setFormData({
-      ...formData,
-      channels: {
-        ...formData.channels,
-        [channel]: !formData.channels[channel],
-      },
-    });
-  };
-
-  const handleSendNotification = async (e) => {
-    e.preventDefault();
-    
-    if (!formData.title || !formData.message) {
-      setErrorMessage('Please fill in title and message');
-      return;
-    }
-
-    const selectedChannels = Object.keys(formData.channels).filter(
-      (channel) => formData.channels[channel]
-    );
-
-    if (selectedChannels.length === 0) {
-      setErrorMessage('Please select at least one notification channel');
-      return;
-    }
-
-    setSending(true);
+  const handleSend = async (event) => {
+    event.preventDefault();
     setSuccessMessage('');
     setErrorMessage('');
 
+    if (!formData.title.trim() || !formData.message.trim()) {
+      setErrorMessage('Title and message are both required.');
+      return;
+    }
+    if (reachable === 0) {
+      setErrorMessage('Nobody has used the Telegram bot yet, so there is no one to send to.');
+      return;
+    }
+
+    // These messages land in real people's chats and cannot be recalled.
+    const confirmed = window.confirm(
+      `Send "${formData.title.trim()}" to ${reachable} citizen${reachable === 1 ? '' : 's'} on Telegram?\n\n` +
+        'This cannot be undone.'
+    );
+    if (!confirmed) return;
+
+    setSending(true);
     try {
-      const response = await axios.post(`${API_URL}/notifications/send`, {
-        title: formData.title,
-        message: formData.message,
+      const response = await broadcastAPI.send({
+        title: formData.title.trim(),
+        message: formData.message.trim(),
         category: formData.category,
         priority: formData.priority,
-        channels: selectedChannels,
       });
-
+      const { sent_count: sent, recipients, failed } = response.data;
       setSuccessMessage(
-        `Notification sent successfully to ${response.data.sent_count} subscribers across ${selectedChannels.length} channel(s)!`
+        failed
+          ? `Delivered to ${sent} of ${recipients} citizens. ${failed} could not be reached — they have most likely blocked the bot.`
+          : `Delivered to all ${sent} citizens.`
       );
-      
-      // Reset form
-      setFormData({
-        title: '',
-        message: '',
-        category: 'alert',
-        priority: 'medium',
-        channels: {
-          telegram: true,
-          whatsapp: true,
-          inApp: true,
-        },
-      });
-
-      // Reload history
+      setFormData(EMPTY_FORM);
       loadData();
-
     } catch (error) {
-      console.error('Error sending notification:', error);
-      setErrorMessage(
-        error.response?.data?.message || 'Failed to send notification. Please try again.'
-      );
+      setErrorMessage(errorText(error, 'Could not send the broadcast.'));
     } finally {
       setSending(false);
     }
   };
 
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'high':
-        return 'text-red-600 bg-red-50 dark:bg-red-900/20 dark:text-red-400';
-      case 'medium':
-        return 'text-yellow-600 bg-yellow-50 dark:bg-yellow-900/20 dark:text-yellow-400';
-      case 'low':
-        return 'text-green-600 bg-green-50 dark:bg-green-900/20 dark:text-green-400';
-      default:
-        return 'text-gray-600 bg-gray-50 dark:bg-gray-900/20 dark:text-gray-400';
-    }
-  };
-
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'sent':
-        return <CheckCircle className="w-5 h-5 text-green-500" />;
-      case 'failed':
-        return <XCircle className="w-5 h-5 text-red-500" />;
-      case 'pending':
-        return <Clock className="w-5 h-5 text-yellow-500" />;
-      default:
-        return <Clock className="w-5 h-5 text-gray-500" />;
-    }
-  };
-
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-3xl font-bold text-black dark:text-white">
-            Push Notifications
-          </h2>
+          <h2 className="text-3xl font-bold text-black dark:text-white">Push Notifications</h2>
           <p className="text-black/60 dark:text-white/60 mt-1">
-            Broadcast alerts and announcements to citizens
+            Broadcast alerts and announcements to citizens on Telegram
           </p>
         </div>
         <button
           onClick={loadData}
-          className="px-4 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+          className="px-4 py-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-black dark:text-white"
         >
           Refresh
         </button>
       </div>
 
-      {/* Subscriber Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Audience */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="p-6 rounded-xl bg-black dark:bg-white text-white dark:text-black">
           <div className="flex items-center justify-between">
             <Users className="w-8 h-8" />
-            <span className="text-3xl font-bold">{subscriberCount.total}</span>
+            <span className="text-3xl font-bold">{loading ? '—' : reachable}</span>
           </div>
-          <p className="mt-2 text-sm opacity-80">Total Subscribers</p>
+          <p className="mt-2 text-sm opacity-80">Citizens reachable</p>
         </div>
 
-        <div className="p-6 rounded-xl border-2 border-black/10 dark:border-white/10">
-          <div className="flex items-center justify-between">
-            <Bell className="w-6 h-6 text-black dark:text-white" />
-            <span className="text-2xl font-bold text-black dark:text-white">
-              {subscriberCount.inApp}
-            </span>
+        <div className="md:col-span-2 p-6 rounded-xl border-2 border-black/10 dark:border-white/10">
+          <div className="flex items-center gap-3 text-black dark:text-white">
+            {TELEGRAM_ICON}
+            <span className="font-semibold">Telegram</span>
           </div>
-          <p className="mt-2 text-sm text-black/60 dark:text-white/60">In-App (FCM)</p>
-        </div>
-
-        <div className="p-6 rounded-xl border-2 border-black/10 dark:border-white/10">
-          <div className="flex items-center justify-between">
-            <svg className="w-6 h-6 text-black dark:text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.053 5.56-5.023c.242-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.654-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.941z" />
-            </svg>
-            <span className="text-2xl font-bold text-black dark:text-white">
-              {subscriberCount.telegram}
-            </span>
-          </div>
-          <p className="mt-2 text-sm text-black/60 dark:text-white/60">Telegram</p>
-        </div>
-
-        <div className="p-6 rounded-xl border-2 border-black/10 dark:border-white/10">
-          <div className="flex items-center justify-between">
-            <svg className="w-6 h-6 text-black dark:text-white" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
-            </svg>
-            <span className="text-2xl font-bold text-black dark:text-white">
-              {subscriberCount.whatsapp}
-            </span>
-          </div>
-          <p className="mt-2 text-sm text-black/60 dark:text-white/60">WhatsApp</p>
+          <p className="mt-2 text-sm text-black/60 dark:text-white/60">
+            Everyone who has filed a complaint through the R1 bot. They started that chat
+            themselves, which is the only reason we can message them — so there is no
+            separate subscriber list to manage.
+          </p>
         </div>
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Send Notification Form */}
-        <div className="space-y-6">
-          <div className="p-6 rounded-xl border-2 border-black/10 dark:border-white/10">
-            <h3 className="text-xl font-bold text-black dark:text-white mb-4">
-              Send Notification
-            </h3>
+      {errorMessage && (
+        <div className="p-4 rounded-lg border-2 border-red-500 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200">
+          {errorMessage}
+        </div>
+      )}
+      {successMessage && (
+        <div className="p-4 rounded-lg border-2 border-green-500 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200">
+          {successMessage}
+        </div>
+      )}
 
-            {/* Templates */}
-            <div className="mb-6">
-              <label className="block text-sm font-semibold text-black dark:text-white mb-2">
-                Quick Templates
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Compose */}
+        <div className="p-6 rounded-xl border-2 border-black/10 dark:border-white/10">
+          <h3 className="text-xl font-bold text-black dark:text-white mb-4">Send Notification</h3>
+
+          <div className="mb-6">
+            <span className="block text-sm font-semibold text-black dark:text-white mb-2">
+              Quick Templates
+            </span>
+            <div className="grid grid-cols-1 gap-2">
+              {TEMPLATES.map((template) => (
+                <button
+                  key={template.id}
+                  type="button"
+                  onClick={() => applyTemplate(template)}
+                  className="flex items-center gap-3 p-3 rounded-lg border-2 border-black/10 dark:border-white/10 hover:border-black dark:hover:border-white transition-colors text-left"
+                >
+                  <template.icon className="w-5 h-5 text-black dark:text-white shrink-0" />
+                  <span className="text-sm font-medium text-black dark:text-white">
+                    {template.title.replace(/[🦟💧⚡⚠️🏥]/g, '').trim()}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <form onSubmit={handleSend} className="space-y-4">
+            <div>
+              <label
+                htmlFor="broadcast-title"
+                className="block text-sm font-semibold text-black dark:text-white mb-2"
+              >
+                Notification Title *
               </label>
-              <div className="grid grid-cols-1 gap-2">
-                {templates.map((template) => (
-                  <button
-                    key={template.id}
-                    onClick={() => handleTemplateSelect(template)}
-                    className="flex items-center gap-3 p-3 rounded-lg border-2 border-black/10 dark:border-white/10 hover:border-black dark:hover:border-white transition-colors text-left"
-                  >
-                    <template.icon className="w-5 h-5 text-black dark:text-white" />
-                    <span className="text-sm font-medium text-black dark:text-white">
-                      {template.title.replace(/[🦟💧⚡⚠️🏥]/g, '')}
-                    </span>
-                  </button>
-                ))}
+              <input
+                id="broadcast-title"
+                type="text"
+                name="title"
+                value={formData.title}
+                onChange={handleInputChange}
+                placeholder="Enter notification title"
+                maxLength={200}
+                className="w-full px-4 py-3 rounded-lg border-2 border-black/10 dark:border-white/10 bg-transparent text-black dark:text-white placeholder:text-black/40 dark:placeholder:text-white/40 focus:border-black dark:focus:border-white outline-none transition-colors"
+                required
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="broadcast-message"
+                className="block text-sm font-semibold text-black dark:text-white mb-2"
+              >
+                Message *
+              </label>
+              <textarea
+                id="broadcast-message"
+                name="message"
+                value={formData.message}
+                onChange={handleInputChange}
+                placeholder="Enter notification message"
+                rows={5}
+                maxLength={3000}
+                className="w-full px-4 py-3 rounded-lg border-2 border-black/10 dark:border-white/10 bg-transparent text-black dark:text-white placeholder:text-black/40 dark:placeholder:text-white/40 focus:border-black dark:focus:border-white outline-none transition-colors resize-none"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="broadcast-category"
+                  className="block text-sm font-semibold text-black dark:text-white mb-2"
+                >
+                  Category
+                </label>
+                <select
+                  id="broadcast-category"
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 rounded-lg border-2 border-black/10 dark:border-white/10 bg-white dark:bg-black text-black dark:text-white focus:border-black dark:focus:border-white outline-none transition-colors"
+                >
+                  <option value="alert">Alert</option>
+                  <option value="health">Health</option>
+                  <option value="utility">Utility</option>
+                  <option value="civic">Civic</option>
+                  <option value="emergency">Emergency</option>
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="broadcast-priority"
+                  className="block text-sm font-semibold text-black dark:text-white mb-2"
+                >
+                  Priority
+                </label>
+                <select
+                  id="broadcast-priority"
+                  name="priority"
+                  value={formData.priority}
+                  onChange={handleInputChange}
+                  className="w-full px-4 py-3 rounded-lg border-2 border-black/10 dark:border-white/10 bg-white dark:bg-black text-black dark:text-white focus:border-black dark:focus:border-white outline-none transition-colors"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
               </div>
             </div>
 
-            <form onSubmit={handleSendNotification} className="space-y-4">
-              {/* Title */}
-              <div>
-                <label className="block text-sm font-semibold text-black dark:text-white mb-2">
-                  Notification Title *
-                </label>
-                <input
-                  type="text"
-                  name="title"
-                  value={formData.title}
-                  onChange={handleInputChange}
-                  placeholder="Enter notification title"
-                  className="w-full px-4 py-3 rounded-lg border-2 border-black/10 dark:border-white/10 bg-transparent text-black dark:text-white placeholder:text-black/40 dark:placeholder:text-white/40 focus:border-black dark:focus:border-white outline-none transition-colors"
-                  required
-                />
-              </div>
-
-              {/* Message */}
-              <div>
-                <label className="block text-sm font-semibold text-black dark:text-white mb-2">
-                  Message *
-                </label>
-                <textarea
-                  name="message"
-                  value={formData.message}
-                  onChange={handleInputChange}
-                  placeholder="Enter notification message"
-                  rows={5}
-                  className="w-full px-4 py-3 rounded-lg border-2 border-black/10 dark:border-white/10 bg-transparent text-black dark:text-white placeholder:text-black/40 dark:placeholder:text-white/40 focus:border-black dark:focus:border-white outline-none transition-colors resize-none"
-                  required
-                />
-              </div>
-
-              {/* Category & Priority */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-semibold text-black dark:text-white mb-2">
-                    Category
-                  </label>
-                  <select
-                    name="category"
-                    value={formData.category}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 rounded-lg border-2 border-black/10 dark:border-white/10 bg-white dark:bg-black text-black dark:text-white focus:border-black dark:focus:border-white outline-none transition-colors"
-                  >
-                    <option value="alert">Alert</option>
-                    <option value="health">Health</option>
-                    <option value="utility">Utility</option>
-                    <option value="civic">Civic</option>
-                    <option value="emergency">Emergency</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-black dark:text-white mb-2">
-                    Priority
-                  </label>
-                  <select
-                    name="priority"
-                    value={formData.priority}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 rounded-lg border-2 border-black/10 dark:border-white/10 bg-white dark:bg-black text-black dark:text-white focus:border-black dark:focus:border-white outline-none transition-colors"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Channels */}
-              <div>
-                <label className="block text-sm font-semibold text-black dark:text-white mb-3">
-                  Notification Channels
-                </label>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-3 p-3 rounded-lg border-2 border-black/10 dark:border-white/10 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={formData.channels.inApp}
-                      onChange={() => handleChannelToggle('inApp')}
-                      className="w-5 h-5 rounded border-2 border-black/20 dark:border-white/20"
-                    />
-                    <Bell className="w-5 h-5 text-black dark:text-white" />
-                    <span className="text-sm font-medium text-black dark:text-white">
-                      In-App Push (FCM)
-                    </span>
-                  </label>
-
-                  <label className="flex items-center gap-3 p-3 rounded-lg border-2 border-black/10 dark:border-white/10 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={formData.channels.telegram}
-                      onChange={() => handleChannelToggle('telegram')}
-                      className="w-5 h-5 rounded border-2 border-black/20 dark:border-white/20"
-                    />
-                    <svg className="w-5 h-5 text-black dark:text-white" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295-.002 0-.003 0-.005 0l.213-3.053 5.56-5.023c.242-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.654-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.941z" />
-                    </svg>
-                    <span className="text-sm font-medium text-black dark:text-white">
-                      Telegram
-                    </span>
-                  </label>
-
-                  <label className="flex items-center gap-3 p-3 rounded-lg border-2 border-black/10 dark:border-white/10 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                    <input
-                      type="checkbox"
-                      checked={formData.channels.whatsapp}
-                      onChange={() => handleChannelToggle('whatsapp')}
-                      className="w-5 h-5 rounded border-2 border-black/20 dark:border-white/20"
-                    />
-                    <svg className="w-5 h-5 text-black dark:text-white" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
-                    </svg>
-                    <span className="text-sm font-medium text-black dark:text-white">
-                      WhatsApp
-                    </span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Success/Error Messages */}
-              {successMessage && (
-                <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border-2 border-green-500 text-green-700 dark:text-green-400 text-sm">
-                  {successMessage}
-                </div>
-              )}
-
-              {errorMessage && (
-                <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/20 border-2 border-red-500 text-red-700 dark:text-red-400 text-sm">
-                  {errorMessage}
-                </div>
-              )}
-
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={sending}
-                className="w-full py-4 rounded-lg bg-black dark:bg-white text-white dark:text-black font-semibold hover:scale-[1.02] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-              >
-                {sending ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white/20 dark:border-black/20 border-t-white dark:border-t-black rounded-full animate-spin"></div>
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-5 h-5" />
-                    Send Notification
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
+            <button
+              type="submit"
+              disabled={sending || loading || reachable === 0}
+              className="w-full flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-black dark:bg-white text-white dark:text-black font-semibold hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Send className="w-5 h-5" />
+              {sending
+                ? 'Sending…'
+                : reachable === 0
+                  ? 'No one to send to yet'
+                  : `Send to ${reachable} citizen${reachable === 1 ? '' : 's'}`}
+            </button>
+            <p className="text-xs text-black/50 dark:text-white/50 text-center">
+              Messages land in people&apos;s chats immediately and cannot be recalled.
+            </p>
+          </form>
         </div>
 
-        {/* Notification History */}
-        <div className="space-y-4">
-          <div className="p-6 rounded-xl border-2 border-black/10 dark:border-white/10">
-            <h3 className="text-xl font-bold text-black dark:text-white mb-4">
-              Recent Notifications
-            </h3>
+        {/* History */}
+        <div className="p-6 rounded-xl border-2 border-black/10 dark:border-white/10">
+          <h3 className="text-xl font-bold text-black dark:text-white mb-4">Recent Broadcasts</h3>
 
-            <div className="space-y-3 max-h-[800px] overflow-y-auto">
-              {loading ? (
-                <div className="text-center py-8">
-                  <div className="w-8 h-8 border-4 border-black/20 dark:border-white/20 border-t-black dark:border-t-white rounded-full animate-spin mx-auto"></div>
-                  <p className="text-sm text-black/60 dark:text-white/60 mt-3">Loading...</p>
-                </div>
-              ) : notificationHistory.length === 0 ? (
-                <div className="text-center py-12">
-                  <Bell className="w-12 h-12 text-black/20 dark:text-white/20 mx-auto mb-3" />
-                  <p className="text-black/60 dark:text-white/60">No notifications sent yet</p>
-                </div>
-              ) : (
-                notificationHistory.map((notification) => (
-                  <div
-                    key={notification.id}
-                    className="p-4 rounded-lg border-2 border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20 transition-colors"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <h4 className="font-semibold text-black dark:text-white">
-                        {notification.title}
-                      </h4>
-                      {getStatusIcon(notification.status)}
-                    </div>
-
-                    <p className="text-sm text-black/60 dark:text-white/60 mb-3 line-clamp-2">
-                      {notification.message}
-                    </p>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`px-2 py-1 rounded text-xs font-semibold ${getPriorityColor(notification.priority)}`}>
-                        {notification.priority}
-                      </span>
-                      <span className="px-2 py-1 rounded text-xs font-semibold bg-black/10 dark:bg-white/10 text-black dark:text-white">
-                        {notification.category}
-                      </span>
-                      <span className="text-xs text-black/40 dark:text-white/40">
-                        {new Date(notification.created_at).toLocaleString()}
-                      </span>
-                    </div>
-
-                    {notification.sent_count > 0 && (
-                      <div className="mt-3 pt-3 border-t border-black/10 dark:border-white/10">
-                        <div className="flex items-center gap-2 text-xs text-black/60 dark:text-white/60">
-                          <Users className="w-4 h-4" />
-                          Sent to {notification.sent_count} subscribers via{' '}
-                          {notification.channels?.join(', ') || 'multiple channels'}
-                        </div>
-                      </div>
-                    )}
+          {loading ? (
+            <p className="text-sm text-black/50 dark:text-white/50">Loading…</p>
+          ) : history.length === 0 ? (
+            <p className="text-sm text-black/50 dark:text-white/50">
+              Nothing has been broadcast yet.
+            </p>
+          ) : (
+            <div className="space-y-3 max-h-[640px] overflow-y-auto">
+              {history.map((item) => (
+                <div
+                  key={item.id}
+                  className="p-4 rounded-lg border-2 border-black/10 dark:border-white/10"
+                >
+                  <div className="flex items-start justify-between gap-3 mb-1">
+                    <p className="font-semibold text-black dark:text-white">{item.title}</p>
+                    <span
+                      className={`shrink-0 text-xs px-2 py-1 rounded ${priorityClass(item.priority)}`}
+                    >
+                      {item.priority}
+                    </span>
                   </div>
-                ))
-              )}
+                  <p className="text-sm text-black/70 dark:text-white/70 mb-3">{item.message}</p>
+                  <div className="flex items-center gap-4 text-xs text-black/50 dark:text-white/50 flex-wrap">
+                    <span className="flex items-center gap-1">
+                      <CheckCircle className="w-4 h-4 text-green-500" />
+                      {item.delivered} delivered
+                    </span>
+                    {item.failed > 0 && (
+                      <span className="flex items-center gap-1">
+                        <XCircle className="w-4 h-4 text-red-500" />
+                        {item.failed} failed
+                      </span>
+                    )}
+                    <span>{when(item.sent_at)}</span>
+                  </div>
+                </div>
+              ))}
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

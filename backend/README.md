@@ -64,3 +64,26 @@ show up on the complaint itself. The dashboard reads them back through signed UR
 Run `supabase/work_submissions_migration.sql` once against the project database. Until
 that table exists the app loads and lists tasks, but submitting returns a 503 naming the
 migration.
+
+## Civic broadcasts
+
+The dashboard's **Push Notifications** screen sends one announcement to every citizen who
+has filed a complaint through the R1 Telegram bot. There is no subscriber list: the
+audience is the distinct set of `telegram_chat_id` values on `public.complaints`, which
+are exactly the people who opened a conversation with the bot themselves.
+
+Telegram is the only channel. The screen used to offer FCM and WhatsApp beside it with
+nothing implemented behind either, so a broadcast reported as "sent to 3 channels" had in
+fact reached one. A button that claims to have messaged a city and did nothing is worse
+than no button.
+
+| Endpoint | Who | What |
+| --- | --- | --- |
+| `GET /notifications/subscribers` | staff | How many citizens are reachable right now |
+| `GET /notifications/history` | staff | The last 25 broadcasts, with delivery counts |
+| `POST /notifications/send` | **administrator** | Sends the announcement |
+
+Sends are paced under Telegram's rate limit, and a citizen who has blocked the bot is
+counted as failed rather than stopping the rest of the run. Every send is recorded in
+`public.broadcasts` with how many it reached — run
+`supabase/broadcasts_migration.sql` once to create that table.
