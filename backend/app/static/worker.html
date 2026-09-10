@@ -98,6 +98,18 @@
   .step h3 { font-size: 15px; margin-bottom: 2px; }
 
   img.preview { width: 100%; border-radius: var(--radius); border: 1px solid var(--line); margin-top: 10px; display: block; }
+
+  /* Live viewfinder */
+  .camwrap {
+    position: relative; width: 100%; aspect-ratio: 3 / 4; max-height: 58vh;
+    background: #000; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+  }
+  .camwrap video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .shutter {
+    background: #fff; border: 4px solid rgba(255,255,255,0.3); color: #0b1220;
+    border-radius: 999px; font-size: 15px;
+  }
+  .shutter:disabled { opacity: 0.5; }
   .hide { display: none !important; }
   .center { text-align: center; padding: 48px 16px; color: var(--muted); }
   .spin { width: 26px; height: 26px; border: 3px solid var(--line); border-top-color: var(--accent);
@@ -181,8 +193,18 @@
           <h3>Kaam ki photo</h3>
           <p class="note" id="photoNote">Abhi camera se kheenchein, gallery se nahi.</p>
           <input id="photo" type="file" accept="image/*" capture="environment" class="hide">
-          <button class="small" id="photoBtn" style="margin-top:10px">📷 Photo lein</button>
-          <img id="photoPreview" class="preview hide" alt="Selected work photo">
+          <button class="small" id="photoBtn" style="margin-top:10px">📷 Camera kholein</button>
+
+          <div id="cameraPanel" class="hide" style="margin-top:10px">
+            <div class="camwrap"><video id="cam" playsinline muted autoplay></video></div>
+            <div class="row" style="margin-top:10px; flex-wrap:nowrap">
+              <button class="shutter" id="shutter" style="flex:1">⬤&nbsp; Kheenchein</button>
+              <button class="ghost small" id="camCancel">Band</button>
+            </div>
+            <p class="note" id="camNote"></p>
+          </div>
+
+          <img id="photoPreview" class="preview hide" alt="Photo of the completed work">
         </div>
       </div>
 
@@ -227,6 +249,7 @@
   var task = null;
   var photoFile = null;
   var gps = null;
+  var stream = null;
 
   var $ = function (id) { return document.getElementById(id); };
 
@@ -274,6 +297,7 @@
   }
 
   function show(view) {
+    if (view !== "taskView") stopCamera();
     ["loginView", "listView", "taskView"].forEach(function (id) {
       $(id).classList.toggle("hide", id !== view);
     });
@@ -433,6 +457,9 @@
     $("photo").value = "";
     $("notes").value = "";
     $("photoPreview").classList.add("hide");
+    stopCamera();
+    $("photoBtn").textContent = "📷 Camera kholein";
+    $("camNote").textContent = "";
     $("photoNote").textContent = "Abhi camera se kheenchein, gallery se nahi.";
     $("gpsNote").textContent = "GPS se site par hone ka proof.";
     $("stepPhoto").classList.remove("done");
@@ -465,7 +492,22 @@
 
   // --- Proof: photo --------------------------------------------------------
 
-  $("photoBtn").onclick = function () {
+  // The camera opens inside the page: one tap to shoot, no app switch, and the photo is
+  // by construction taken right now. Falls back to the native plugin and then to the file
+  // input, because getUserMedia needs a secure context and camera permission and neither
+  // is guaranteed - a worker who cannot use the viewfinder must still be able to submit.
+
+  function stopCamera() {
+    if (stream) {
+      stream.getTracks().forEach(function (track) { track.stop(); });
+      stream = null;
+    }
+    $("cam").srcObject = null;
+    $("cameraPanel").classList.add("hide");
+    $("shutter").disabled = false;
+  }
+
+  function nativeCamera() {
     var camera = plugin("Camera");
     if (!camera) { $("photo").click(); return; }
     // source CAMERA, never the gallery: the point of the photo is that it was taken now.
@@ -473,11 +515,62 @@
       .then(function (photo) {
         var type = "image/" + (photo.format === "png" ? "png" : "jpeg");
         var blob = base64ToBlob(photo.base64String, type);
-        blob.name = "work." + (photo.format || "jpg");
-        blob.lastModified = Date.now();
-        usePhoto(blob);
+        usePhoto(new File([blob], "work." + (photo.format || "jpg"), {
+          type: type, lastModified: Date.now()
+        }));
       })
       .catch(function () { /* the worker cancelled the camera */ });
+  }
+
+  $("photoBtn").onclick = function () {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      nativeCamera();
+      return;
+    }
+    $("camNote").textContent = "Camera khul raha hai…";
+    $("cameraPanel").classList.remove("hide");
+    // facingMode is a preference, not a demand: a laptop with only a front camera would
+    // fail outright on an exact constraint.
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 } },
+      audio: false
+    }).then(function (media) {
+      stream = media;
+      var video = $("cam");
+      video.srcObject = media;
+      return video.play();
+    }).then(function () {
+      $("camNote").textContent = "Kaam saaf dikhe aisa frame lein, phir kheenchein.";
+    }).catch(function (error) {
+      stopCamera();
+      $("photoNote").textContent = error && error.name === "NotAllowedError"
+        ? "Camera permission nahi mili. Allow karein ya gallery se chunein."
+        : "Camera nahi khul paya, doosre tareeke se le rahe hain.";
+      nativeCamera();
+    });
+  };
+
+  $("camCancel").onclick = stopCamera;
+
+  $("shutter").onclick = function () {
+    var video = $("cam");
+    if (!stream || !video.videoWidth) return;
+    $("shutter").disabled = true;
+
+    // A full-resolution phone frame is several megabytes; the server caps uploads at 8 MB
+    // and a worker on mobile data pays for every one of them. 1600px on the long edge is
+    // still plenty to see whether a pothole was filled.
+    var scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+    var canvas = document.createElement("canvas");
+    canvas.width = Math.round(video.videoWidth * scale);
+    canvas.height = Math.round(video.videoHeight * scale);
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(function (blob) {
+      if (!blob) { $("shutter").disabled = false; return; }
+      usePhoto(new File([blob], "work.jpg", { type: "image/jpeg", lastModified: Date.now() }));
+      stopCamera();
+    }, "image/jpeg", 0.85);
   };
 
   $("photo").onchange = function () {
@@ -494,7 +587,7 @@
     preview.onload = function () { URL.revokeObjectURL(url); };
     $("stepPhoto").classList.add("done");
     $("photoNote").textContent = "Photo tayyar (" + Math.round(file.size / 1024) + " KB).";
-    $("photoBtn").textContent = "📷 Photo badlein";
+    $("photoBtn").textContent = "📷 Dobara kheenchein";
     updateSubmit();
   }
 
