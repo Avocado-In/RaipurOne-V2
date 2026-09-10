@@ -117,7 +117,15 @@ CurrentWorker = Annotated[dict, Depends(require_worker)]
 def worker_page():
     if not WORKER_PAGE.exists():  # pragma: no cover - only if the file is deleted
         raise HTTPException(status_code=500, detail="Worker app page is missing")
-    return FileResponse(WORKER_PAGE, media_type="text/html")
+    # no-cache means revalidate, not re-download: the ETag still answers 304 for an
+    # unchanged page. Without it a browser is free to serve a stale copy from its
+    # heuristic cache, and a worker ends up running a version of the app that was
+    # replaced days ago while the page looks perfectly normal.
+    return FileResponse(
+        WORKER_PAGE,
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache"},
+    )
 
 
 # --- Worker endpoints -------------------------------------------------------
