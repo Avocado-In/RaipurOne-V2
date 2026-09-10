@@ -24,6 +24,19 @@ These are kept in the repo so the project can be picked up again later:
 - [`continuation.md`](continuation.md) — running notes on where work left off
 - [`supabase/SCHEMA_GUIDE.md`](supabase/SCHEMA_GUIDE.md) — database schema reference
 
+## Running it
+
+On Windows, one command starts the API, the dashboard and the Telegram bot, each in its
+own window:
+
+```powershell
+.\start.ps1           # start everything
+.\start.ps1 -Stop     # stop everything
+.\start.ps1 -Phone    # also arm the USB tunnel for the worker app
+```
+
+The manual steps behind that script are below.
+
 ## Getting started
 
 ### 1. Environment
