@@ -1,0 +1,12 @@
+{
+  "appId": "in.raipurone.worker",
+  "appName": "RaipurOne Worker",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  }
+}

@@ -26,7 +26,9 @@ The AI provider remains behind `app.services.ai_service.AIProvider`; replace the
 
 Field workers get their own mobile page at **`/worker`** on the API host (for example
 `http://192.168.1.5:8000/worker`). It is a single static page served by FastAPI - no build
-step, no separate deployment. A worker opens it on their phone and signs in with the same
+step, no separate deployment. The same file is also packaged as an Android app in
+[`worker-app/`](../worker-app/README.md), which is what workers should actually install:
+browsers block GPS on a plain-http address, and the app's WebView does not. A worker opens it on their phone and signs in with the same
 `public.users` credentials the dashboard uses; only accounts with a matching row in
 `public.workers` are let in.
 

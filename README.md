@@ -9,6 +9,7 @@ Smart Grievance Management System for Raipur — a FastAPI backend, a React dash
 | `backend/` | FastAPI app (`app/api/routes`, `app/services`, `app/core`), Telegram intake worker, the field worker app page (`app/static/worker.html`), pytest suite |
 | `dashboard-frontend/` | React admin dashboard (Create React App + Tailwind) |
 | `supabase/` | `schema.sql`, `seed.sql`, migrations and `SCHEMA_GUIDE.md` |
+| `worker-app/` | Capacitor wrapper that packages the worker page as an Android APK |
 | `notebooks/` | AI experiments and `label_mapping.json` for the grievance classifier |
 | `Grievence_dataset.csv` | Labelled grievance dataset used to train the classifier |
 
@@ -59,8 +60,11 @@ python -m app.telegram_bot
 
 ### 4. Worker app
 
-Nothing extra to install - the backend serves it at `/worker`. Open that URL on a phone on
-the same network (`http://<api-host>:8000/worker`) and sign in as a worker. See
+The backend serves it at `/worker`, so opening `http://<api-host>:8000/worker` in a
+browser is enough to try it. For real field use install
+[`worker-app/RaipurOne-Worker.apk`](worker-app/) instead: browsers refuse GPS on a
+plain-http address, and the app does not. See
+[`worker-app/README.md`](worker-app/README.md) for installing and rebuilding it, and
 [`backend/README.md`](backend/README.md#worker-app) for the proof-of-work rules.
 
 ### 5. Frontend

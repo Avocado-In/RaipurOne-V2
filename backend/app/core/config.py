@@ -29,7 +29,12 @@ class Settings(BaseModel):
     app_name: str = "Smart Grievance Management API"
     debug: bool = True
     app_env: str = "development"
-    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    cors_origins: str = (
+        "http://localhost:3000,http://127.0.0.1:3000"
+        # The Android worker app's WebView loads the page from https://localhost, so
+        # every request it makes is cross-origin and needs these two allowed.
+        ",https://localhost,capacitor://localhost"
+    )
     supabase_url: str = ""
     supabase_service_role_key: str = ""
     supabase_anon_key: str = ""
@@ -86,7 +91,10 @@ settings = Settings(
     app_name=os.getenv("APP_NAME", "Smart Grievance Management API"),
     debug=os.getenv("DEBUG", "true").lower() in {"1", "true", "yes", "on"},
     app_env=os.getenv("APP_ENV", "development").lower(),
-    cors_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000"),
+    cors_origins=os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000,https://localhost,capacitor://localhost",
+    ),
     supabase_url=os.getenv("SUPABASE_URL", ""),
     supabase_service_role_key=os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
     supabase_anon_key=os.getenv("SUPABASE_ANON_KEY", ""),

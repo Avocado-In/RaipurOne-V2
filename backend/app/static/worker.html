@@ -127,6 +127,12 @@
     <p class="note" style="margin-bottom:20px">Apna worker ID aur password daalein.</p>
     <div id="loginMsg"></div>
     <form id="loginForm" class="stack">
+      <div id="serverRow" class="hide">
+        <label for="server">Server address</label>
+        <input id="server" type="text" inputmode="url" autocapitalize="none" autocorrect="off"
+               placeholder="http://192.168.1.5:8000">
+        <p class="note">Aapke RaipurOne server ka address. Ek baar daalein, yaad rahega.</p>
+      </div>
       <div>
         <label for="u">Worker ID</label>
         <input id="u" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" required>
@@ -209,8 +215,13 @@
 (function () {
   "use strict";
 
-  var API = "";                       // same origin as this page
+  // Served by the backend itself, every request is same-origin and API stays empty.
+  // Inside the Android build the page is loaded from https://localhost by the WebView, so
+  // it has to be told where the server lives; the worker types it once on the login form.
+  var PACKAGED = typeof window.Capacitor !== "undefined";
   var TOKEN_KEY = "raipurone_worker_token";
+  var SERVER_KEY = "raipurone_worker_server";
+  var API = "";
   var token = null;
   var worker = null;
   var task = null;
@@ -218,6 +229,49 @@
   var gps = null;
 
   var $ = function (id) { return document.getElementById(id); };
+
+  function plugin(name) {
+    return (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins[name]) || null;
+  }
+
+  function store(key, value) {
+    try { value === null ? localStorage.removeItem(key) : localStorage.setItem(key, value); } catch (e) {}
+  }
+
+  function recall(key) {
+    try { return localStorage.getItem(key) || ""; } catch (e) { return ""; }
+  }
+
+  function normalizeServer(value) {
+    var url = String(value || "").trim().replace(/\/+$/, "");
+    if (!url) return "";
+    return /^https?:\/\//i.test(url) ? url : "http://" + url;
+  }
+
+  /** One position fix, from the native plugin when packaged and the browser otherwise. */
+  function currentPosition() {
+    var geo = plugin("Geolocation");
+    if (geo) {
+      return geo.requestPermissions()
+        .catch(function () { /* already granted, or the user will be asked below */ })
+        .then(function () {
+          return geo.getCurrentPosition({ enableHighAccuracy: true, timeout: 20000 });
+        });
+    }
+    return new Promise(function (resolve, reject) {
+      if (!navigator.geolocation) { reject({ code: 2 }); return; }
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true, timeout: 20000, maximumAge: 0
+      });
+    });
+  }
+
+  function base64ToBlob(base64, type) {
+    var binary = atob(base64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return new Blob([bytes], { type: type });
+  }
 
   function show(view) {
     ["loginView", "listView", "taskView"].forEach(function (id) {
@@ -270,7 +324,7 @@
 
   function logout() {
     token = null; worker = null; task = null;
-    try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+    store(TOKEN_KEY, null);
     show("loginView");
   }
 
@@ -279,6 +333,12 @@
   $("loginForm").onsubmit = function (event) {
     event.preventDefault();
     message("loginMsg", "");
+    if (PACKAGED) {
+      API = normalizeServer($("server").value);
+      if (!API) { message("loginMsg", "Server address daalein."); return; }
+      $("server").value = API;
+      store(SERVER_KEY, API);
+    }
     $("loginBtn").disabled = true;
     $("loginBtn").textContent = "Login ho raha hai…";
     fetch(API + "/auth/login", {
@@ -292,7 +352,7 @@
       });
     }).then(function (data) {
       token = data.access_token;
-      try { localStorage.setItem(TOKEN_KEY, token); } catch (e) {}
+      store(TOKEN_KEY, token);
       $("p").value = "";
       return boot();
     }).catch(function (error) {
@@ -405,11 +465,27 @@
 
   // --- Proof: photo --------------------------------------------------------
 
-  $("photoBtn").onclick = function () { $("photo").click(); };
+  $("photoBtn").onclick = function () {
+    var camera = plugin("Camera");
+    if (!camera) { $("photo").click(); return; }
+    // source CAMERA, never the gallery: the point of the photo is that it was taken now.
+    camera.getPhoto({ quality: 70, resultType: "base64", source: "CAMERA", saveToGallery: false })
+      .then(function (photo) {
+        var type = "image/" + (photo.format === "png" ? "png" : "jpeg");
+        var blob = base64ToBlob(photo.base64String, type);
+        blob.name = "work." + (photo.format || "jpg");
+        blob.lastModified = Date.now();
+        usePhoto(blob);
+      })
+      .catch(function () { /* the worker cancelled the camera */ });
+  };
 
   $("photo").onchange = function () {
     var file = this.files && this.files[0];
-    if (!file) return;
+    if (file) usePhoto(file);
+  };
+
+  function usePhoto(file) {
     photoFile = file;
     var url = URL.createObjectURL(file);
     var preview = $("photoPreview");
@@ -420,18 +496,14 @@
     $("photoNote").textContent = "Photo tayyar (" + Math.round(file.size / 1024) + " KB).";
     $("photoBtn").textContent = "📷 Photo badlein";
     updateSubmit();
-  };
+  }
 
   // --- Proof: location -----------------------------------------------------
 
   $("gpsBtn").onclick = function () {
-    if (!navigator.geolocation) {
-      $("gpsNote").textContent = "Is phone me GPS support nahi hai.";
-      return;
-    }
     $("gpsBtn").disabled = true;
     $("gpsNote").textContent = "Location li ja rahi hai…";
-    navigator.geolocation.getCurrentPosition(function (position) {
+    currentPosition().then(function (position) {
       gps = {
         lat: position.coords.latitude,
         lng: position.coords.longitude,
@@ -441,14 +513,14 @@
       $("gpsNote").textContent = gps.lat.toFixed(5) + ", " + gps.lng.toFixed(5) +
         " (±" + Math.round(gps.accuracy) + "m)";
       $("gpsBtn").textContent = "📍 Dobara lein";
-      $("gpsBtn").disabled = false;
       updateSubmit();
-    }, function (error) {
-      $("gpsBtn").disabled = false;
-      $("gpsNote").textContent = error.code === 1
-        ? "Location permission dena zaroori hai. Browser settings me allow karein."
+    }).catch(function (error) {
+      $("gpsNote").textContent = (error && error.code === 1)
+        ? "Location permission dena zaroori hai. Settings me allow karein."
         : "Location nahi mili. Bahar khade hokar dobara try karein.";
-    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+    }).finally(function () {
+      $("gpsBtn").disabled = false;
+    });
   };
 
   function updateSubmit() {
@@ -500,8 +572,13 @@
 
   // --- Start ---------------------------------------------------------------
 
-  try { token = localStorage.getItem(TOKEN_KEY); } catch (e) { token = null; }
-  if (token) { boot(); } else { show("loginView"); }
+  if (PACKAGED) {
+    API = recall(SERVER_KEY);
+    $("serverRow").classList.remove("hide");
+    $("server").value = API;
+  }
+  token = recall(TOKEN_KEY);
+  if (token && (!PACKAGED || API)) { boot(); } else { show("loginView"); }
 })();
 </script>
 </body>
