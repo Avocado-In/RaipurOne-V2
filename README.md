@@ -21,10 +21,15 @@ These are kept in the repo so the project can be picked up again later:
 - [`plan.md`](plan.md) — overall product plan
 - [`phases.md`](phases.md) — phased delivery breakdown
 - [`stack.md`](stack.md) — chosen technology stack
+- [`RUNBOOK.md`](RUNBOOK.md) — starting the system, and every error it produces
 - [`continuation.md`](continuation.md) — running notes on where work left off
 - [`supabase/SCHEMA_GUIDE.md`](supabase/SCHEMA_GUIDE.md) — database schema reference
 
 ## Running it
+
+**[`RUNBOOK.md`](RUNBOOK.md) is the page to open when something will not start.** It has
+the commands, the logins, and every error this system actually produces with what each
+one means.
 
 On Windows, one command starts the API, the dashboard and the Telegram bot, each in its
 own window:
