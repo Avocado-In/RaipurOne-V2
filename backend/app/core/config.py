@@ -42,6 +42,15 @@ class Settings(BaseModel):
     # civic data with no indication it is fake. Off unless explicitly switched on.
     allow_demo_fallback: bool = False
     require_auth: bool = True
+    # --- Worker app proof-of-work rules ---
+    # How far from a complaint's own coordinates a worker may stand and still submit.
+    # Only enforced when the complaint actually has coordinates; most Telegram complaints
+    # arrive without a location pin.
+    work_geofence_metres: float = 300.0
+    # A phone reporting worse accuracy than this is not evidence the worker was there.
+    work_max_gps_accuracy_metres: float = 200.0
+    # Photos older than this were taken somewhere else, earlier - not proof of this job.
+    work_photo_max_age_minutes: float = 60.0
 
 
 # Values the project's .env owns outright. A stale machine-wide export of one of
@@ -87,4 +96,7 @@ settings = Settings(
     auth_mode=os.getenv("AUTH_MODE", "demo").lower(),
     allow_demo_fallback=os.getenv("ALLOW_DEMO_FALLBACK", "false").lower() in {"1", "true", "yes", "on"},
     require_auth=os.getenv("REQUIRE_AUTH", "true").lower() in {"1", "true", "yes", "on"},
+    work_geofence_metres=float(os.getenv("WORK_GEOFENCE_METRES", "300")),
+    work_max_gps_accuracy_metres=float(os.getenv("WORK_MAX_GPS_ACCURACY_METRES", "200")),
+    work_photo_max_age_minutes=float(os.getenv("WORK_PHOTO_MAX_AGE_MINUTES", "60")),
 )

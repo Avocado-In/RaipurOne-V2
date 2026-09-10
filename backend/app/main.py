@@ -18,9 +18,9 @@ logging.basicConfig(
 logger = logging.getLogger("raipurone.api")
 
 try:
-    from .api.routes import ai, analytics, auth, complaints, images, notifications, workers
+    from .api.routes import ai, analytics, auth, complaints, images, notifications, worker_app, workers
 except ImportError:  # pragma: no cover - fallback for direct script execution
-    from app.api.routes import ai, analytics, auth, complaints, images, notifications, workers
+    from app.api.routes import ai, analytics, auth, complaints, images, notifications, worker_app, workers
 
 app = FastAPI(title="Smart Grievance Management API", version="0.1.0")
 
@@ -49,6 +49,9 @@ app.include_router(ai.router, prefix="/ai", tags=["ai"])
 app.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 app.include_router(images.router, prefix="/images", tags=["images"])
 app.include_router(workers.router, prefix="/workers", tags=["workers"])
+# The field worker app: its own mobile page at /worker plus the endpoints it and the
+# dashboard's review screen call.
+app.include_router(worker_app.router, prefix="/worker", tags=["worker-app"])
 app.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
 
 repository = get_complaint_repository()

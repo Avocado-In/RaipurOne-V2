@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1220">
+<title>RaipurOne Worker</title>
+<style>
+  :root {
+    --bg: #0b1220;
+    --surface: #121c30;
+    --surface-2: #1a2740;
+    --line: #26344f;
+    --text: #eef2f9;
+    --muted: #9aa8c2;
+    --accent: #3d8bff;
+    --ok: #2fbf71;
+    --warn: #f0a92e;
+    --bad: #f2555a;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 16px; }
+  h1, h2, h3 { margin: 0; line-height: 1.25; }
+
+  /* Header */
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(11, 18, 32, 0.94);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+    padding-top: env(safe-area-inset-top);
+  }
+  .bar { display: flex; align-items: center; gap: 12px; max-width: 560px; margin: 0 auto; padding: 12px 16px; }
+  .bar .grow { flex: 1; min-width: 0; }
+  .brand { font-weight: 700; letter-spacing: -0.01em; }
+  .who { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Buttons */
+  button {
+    font: inherit; font-weight: 600; color: var(--text);
+    background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 14px 16px; cursor: pointer;
+    min-height: 48px; width: 100%;
+  }
+  button:active { transform: scale(0.99); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .go { background: var(--ok); border-color: var(--ok); color: #05231a; }
+  .ghost { background: transparent; }
+  .small { min-height: 38px; padding: 8px 12px; font-size: 14px; width: auto; }
+
+  /* Forms */
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 6px; }
+  input[type=text], input[type=password], textarea {
+    width: 100%; font: inherit; color: var(--text);
+    background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 13px 14px; min-height: 48px;
+  }
+  textarea { min-height: 84px; resize: vertical; }
+  input:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+  .card + .card { margin-top: 12px; }
+  .task { display: block; width: 100%; text-align: left; background: var(--surface); padding: 14px 16px; }
+  .task + .task { margin-top: 10px; }
+  .task h3 { font-size: 16px; margin-bottom: 4px; }
+  .task p { margin: 0; font-size: 13px; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .tag { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+         padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .tag.critical, .tag.high { color: var(--bad); border-color: var(--bad); }
+  .tag.medium { color: var(--warn); border-color: var(--warn); }
+  .tag.status { color: var(--accent); border-color: var(--accent); }
+
+  .note { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  .msg { border-radius: var(--radius); padding: 12px 14px; font-size: 14px; margin-bottom: 12px; }
+  .msg.bad { background: rgba(242,85,90,0.14); border: 1px solid var(--bad); color: #ffc9cb; }
+  .msg.ok { background: rgba(47,191,113,0.14); border: 1px solid var(--ok); color: #b6f0d1; }
+  .msg.warn { background: rgba(240,169,46,0.14); border: 1px solid var(--warn); color: #ffdfa8; }
+
+  /* Proof steps */
+  .step { display: flex; gap: 12px; align-items: flex-start; padding: 14px 0; border-top: 1px solid var(--line); }
+  .step:first-of-type { border-top: 0; }
+  .dot { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line);
+         display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--muted); margin-top: 2px; }
+  .step.done .dot { background: var(--ok); border-color: var(--ok); color: #05231a; }
+  .step .body { flex: 1; min-width: 0; }
+  .step h3 { font-size: 15px; margin-bottom: 2px; }
+
+  img.preview { width: 100%; border-radius: var(--radius); border: 1px solid var(--line); margin-top: 10px; display: block; }
+  .hide { display: none !important; }
+  .center { text-align: center; padding: 48px 16px; color: var(--muted); }
+  .spin { width: 26px; height: 26px; border: 3px solid var(--line); border-top-color: var(--accent);
+          border-radius: 50%; animation: sp 0.8s linear infinite; margin: 0 auto 12px; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  .stack > * + * { margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<header id="hdr" class="hide">
+  <div class="bar">
+    <div class="grow">
+      <div class="brand">RaipurOne · Worker</div>
+      <div class="who" id="who"></div>
+    </div>
+    <button class="ghost small" id="logout">Logout</button>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <!-- Login -->
+  <section id="loginView" class="hide">
+    <div style="height:36px"></div>
+    <h1 style="font-size:24px;margin-bottom:6px">Worker Login</h1>
+    <p class="note" style="margin-bottom:20px">Apna worker ID aur password daalein.</p>
+    <div id="loginMsg"></div>
+    <form id="loginForm" class="stack">
+      <div>
+        <label for="u">Worker ID</label>
+        <input id="u" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" required>
+      </div>
+      <div>
+        <label for="p">Password</label>
+        <input id="p" type="password" autocomplete="current-password" required>
+      </div>
+      <button class="primary" type="submit" id="loginBtn">Login</button>
+    </form>
+  </section>
+
+  <!-- Task list -->
+  <section id="listView" class="hide">
+    <div class="row" style="justify-content:space-between;margin:16px 0 12px">
+      <h2 style="font-size:19px">Mere Kaam</h2>
+      <button class="ghost small" id="refresh">Refresh</button>
+    </div>
+    <div id="listMsg"></div>
+    <div id="tasks"></div>
+  </section>
+
+  <!-- Task detail + submit -->
+  <section id="taskView" class="hide">
+    <button class="ghost small" id="back" style="margin:14px 0">← Wapas</button>
+    <div id="taskMsg"></div>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:8px">
+        <span class="tag status" id="dStatus"></span>
+        <span class="tag" id="dPriority"></span>
+        <span class="tag" id="dCategory"></span>
+      </div>
+      <h2 style="font-size:19px;margin-bottom:8px" id="dTitle"></h2>
+      <p style="margin:0;font-size:14px;color:var(--muted)" id="dDesc"></p>
+      <p class="note hide" id="dLocation"></p>
+    </div>
+
+    <div class="card">
+      <h3 style="font-size:16px;margin-bottom:4px">Kaam poora hone ka proof</h3>
+      <p class="note" style="margin-bottom:6px">Photo aur location — dono zaroori hain.</p>
+
+      <div class="step" id="stepPhoto">
+        <div class="dot">1</div>
+        <div class="body">
+          <h3>Kaam ki photo</h3>
+          <p class="note" id="photoNote">Abhi camera se kheenchein, gallery se nahi.</p>
+          <input id="photo" type="file" accept="image/*" capture="environment" class="hide">
+          <button class="small" id="photoBtn" style="margin-top:10px">📷 Photo lein</button>
+          <img id="photoPreview" class="preview hide" alt="Selected work photo">
+        </div>
+      </div>
+
+      <div class="step" id="stepGps">
+        <div class="dot">2</div>
+        <div class="body">
+          <h3>Aapki location</h3>
+          <p class="note" id="gpsNote">GPS se site par hone ka proof.</p>
+          <button class="small" id="gpsBtn" style="margin-top:10px">📍 Location lein</button>
+        </div>
+      </div>
+
+      <div class="step" id="stepNotes">
+        <div class="dot">3</div>
+        <div class="body">
+          <h3>Note <span style="font-weight:400;color:var(--muted)">(optional)</span></h3>
+          <textarea id="notes" placeholder="Kya kiya, koi dikkat aayi?" maxlength="1000" style="margin-top:8px"></textarea>
+        </div>
+      </div>
+
+      <button class="go" id="submitBtn" disabled style="margin-top:8px">Kaam submit karein</button>
+      <p class="note" id="submitHint">Photo aur location lene ke baad submit hoga.</p>
+    </div>
+  </section>
+
+  <div id="loading" class="center hide"><div class="spin"></div>Loading…</div>
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var API = "";                       // same origin as this page
+  var TOKEN_KEY = "raipurone_worker_token";
+  var token = null;
+  var worker = null;
+  var task = null;
+  var photoFile = null;
+  var gps = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function show(view) {
+    ["loginView", "listView", "taskView"].forEach(function (id) {
+      $(id).classList.toggle("hide", id !== view);
+    });
+    $("hdr").classList.toggle("hide", view === "loginView");
+    window.scrollTo(0, 0);
+  }
+
+  function busy(on) { $("loading").classList.toggle("hide", !on); }
+
+  function message(host, text, kind) {
+    var el = $(host);
+    if (!text) { el.innerHTML = ""; return; }
+    var div = document.createElement("div");
+    div.className = "msg " + (kind || "bad");
+    div.textContent = text;
+    el.innerHTML = "";
+    el.appendChild(div);
+  }
+
+  // --- API -----------------------------------------------------------------
+
+  function call(path, options) {
+    options = options || {};
+    var headers = options.headers || {};
+    if (token) headers.Authorization = "Bearer " + token;
+    return fetch(API + path, {
+      method: options.method || "GET",
+      headers: headers,
+      body: options.body
+    }).then(function (response) {
+      return response.json().catch(function () { return {}; }).then(function (data) {
+        if (response.status === 401) { logout(); throw new Error("Session khatam ho gaya. Dobara login karein."); }
+        if (!response.ok) throw new Error(data.detail || ("Request failed (" + response.status + ")"));
+        return data;
+      });
+    });
+  }
+
+  function json(path, body) {
+    return call(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {})
+    });
+  }
+
+  // --- Auth ----------------------------------------------------------------
+
+  function logout() {
+    token = null; worker = null; task = null;
+    try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+    show("loginView");
+  }
+
+  $("logout").onclick = logout;
+
+  $("loginForm").onsubmit = function (event) {
+    event.preventDefault();
+    message("loginMsg", "");
+    $("loginBtn").disabled = true;
+    $("loginBtn").textContent = "Login ho raha hai…";
+    fetch(API + "/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: $("u").value.trim(), password: $("p").value })
+    }).then(function (response) {
+      return response.json().then(function (data) {
+        if (!response.ok) throw new Error(data.detail || "Login failed");
+        return data;
+      });
+    }).then(function (data) {
+      token = data.access_token;
+      try { localStorage.setItem(TOKEN_KEY, token); } catch (e) {}
+      $("p").value = "";
+      return boot();
+    }).catch(function (error) {
+      message("loginMsg", error.message);
+    }).finally(function () {
+      $("loginBtn").disabled = false;
+      $("loginBtn").textContent = "Login";
+    });
+  };
+
+  function boot() {
+    busy(true);
+    return call("/worker/me").then(function (data) {
+      worker = data.worker;
+      $("who").textContent = worker.name + " · " + (worker.department || worker.designation || "Field worker");
+      return loadTasks();
+    }).catch(function (error) {
+      message("loginMsg", error.message);
+      show("loginView");
+    }).finally(function () { busy(false); });
+  }
+
+  // --- Task list -----------------------------------------------------------
+
+  function loadTasks() {
+    show("listView");
+    message("listMsg", "");
+    $("tasks").innerHTML = "";
+    busy(true);
+    return call("/worker/tasks").then(function (data) {
+      if (!data.tasks.length) {
+        $("tasks").innerHTML = '<div class="center">✅<br>Abhi koi kaam assign nahi hai.</div>';
+        return;
+      }
+      data.tasks.forEach(function (item) {
+        var card = document.createElement("button");
+        card.className = "task card";
+        card.onclick = function () { openTask(item); };
+
+        var tags = document.createElement("div");
+        tags.className = "row";
+        tags.style.marginBottom = "8px";
+        tags.appendChild(tag(item.status.replace("_", " "), "status"));
+        tags.appendChild(tag(item.priority, item.priority));
+        if (item.rework_reason) tags.appendChild(tag("rework", "critical"));
+
+        var title = document.createElement("h3");
+        title.textContent = item.title || item.id;
+        var desc = document.createElement("p");
+        desc.textContent = item.description || "";
+
+        card.appendChild(tags);
+        card.appendChild(title);
+        card.appendChild(desc);
+        $("tasks").appendChild(card);
+      });
+    }).catch(function (error) {
+      message("listMsg", error.message);
+    }).finally(function () { busy(false); });
+  }
+
+  function tag(text, kind) {
+    var span = document.createElement("span");
+    span.className = "tag " + (kind || "");
+    span.textContent = text;
+    return span;
+  }
+
+  $("refresh").onclick = loadTasks;
+  $("back").onclick = loadTasks;
+
+  // --- Task detail ---------------------------------------------------------
+
+  function openTask(item) {
+    task = item;
+    photoFile = null;
+    gps = null;
+    $("photo").value = "";
+    $("notes").value = "";
+    $("photoPreview").classList.add("hide");
+    $("photoNote").textContent = "Abhi camera se kheenchein, gallery se nahi.";
+    $("gpsNote").textContent = "GPS se site par hone ka proof.";
+    $("stepPhoto").classList.remove("done");
+    $("stepGps").classList.remove("done");
+    message("taskMsg", "");
+
+    $("dTitle").textContent = item.title || item.id;
+    $("dDesc").textContent = item.description || "";
+    $("dStatus").textContent = item.status.replace("_", " ");
+    $("dPriority").textContent = item.priority;
+    $("dPriority").className = "tag " + item.priority;
+    $("dCategory").textContent = item.category || "";
+
+    var location = $("dLocation");
+    if (item.location_text || item.has_coordinates) {
+      location.classList.remove("hide");
+      location.textContent = "📍 " + (item.location_text || "Location pin available") +
+        (item.has_coordinates ? " · site ke paas se hi submit hoga" : "");
+    } else {
+      location.classList.add("hide");
+    }
+
+    if (item.rework_reason) {
+      message("taskMsg", "Wapas bheja gaya: " + item.rework_reason, "warn");
+    }
+
+    updateSubmit();
+    show("taskView");
+  }
+
+  // --- Proof: photo --------------------------------------------------------
+
+  $("photoBtn").onclick = function () { $("photo").click(); };
+
+  $("photo").onchange = function () {
+    var file = this.files && this.files[0];
+    if (!file) return;
+    photoFile = file;
+    var url = URL.createObjectURL(file);
+    var preview = $("photoPreview");
+    preview.src = url;
+    preview.classList.remove("hide");
+    preview.onload = function () { URL.revokeObjectURL(url); };
+    $("stepPhoto").classList.add("done");
+    $("photoNote").textContent = "Photo tayyar (" + Math.round(file.size / 1024) + " KB).";
+    $("photoBtn").textContent = "📷 Photo badlein";
+    updateSubmit();
+  };
+
+  // --- Proof: location -----------------------------------------------------
+
+  $("gpsBtn").onclick = function () {
+    if (!navigator.geolocation) {
+      $("gpsNote").textContent = "Is phone me GPS support nahi hai.";
+      return;
+    }
+    $("gpsBtn").disabled = true;
+    $("gpsNote").textContent = "Location li ja rahi hai…";
+    navigator.geolocation.getCurrentPosition(function (position) {
+      gps = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        accuracy: position.coords.accuracy
+      };
+      $("stepGps").classList.add("done");
+      $("gpsNote").textContent = gps.lat.toFixed(5) + ", " + gps.lng.toFixed(5) +
+        " (±" + Math.round(gps.accuracy) + "m)";
+      $("gpsBtn").textContent = "📍 Dobara lein";
+      $("gpsBtn").disabled = false;
+      updateSubmit();
+    }, function (error) {
+      $("gpsBtn").disabled = false;
+      $("gpsNote").textContent = error.code === 1
+        ? "Location permission dena zaroori hai. Browser settings me allow karein."
+        : "Location nahi mili. Bahar khade hokar dobara try karein.";
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  };
+
+  function updateSubmit() {
+    var ready = Boolean(photoFile && gps);
+    $("submitBtn").disabled = !ready;
+    $("submitHint").textContent = ready
+      ? "Submit karne par admin ko review ke liye chala jayega."
+      : (!photoFile && !gps) ? "Photo aur location lene ke baad submit hoga."
+      : !photoFile ? "Ab kaam ki photo lein."
+      : "Ab location lein.";
+  }
+
+  // --- Submit --------------------------------------------------------------
+
+  $("submitBtn").onclick = function () {
+    if (!photoFile || !gps || !task) return;
+    message("taskMsg", "");
+    $("submitBtn").disabled = true;
+    $("submitBtn").textContent = "Bheja ja raha hai…";
+
+    var form = new FormData();
+    form.append("photo", photoFile, photoFile.name || "work.jpg");
+    form.append("lat", gps.lat);
+    form.append("lng", gps.lng);
+    form.append("accuracy_m", Math.round(gps.accuracy));
+    // The browser reports when the file was written, which for a camera capture is the
+    // moment the photo was taken. The server uses it to refuse old gallery pictures.
+    if (photoFile.lastModified) form.append("photo_taken_at", photoFile.lastModified);
+    form.append("notes", $("notes").value.trim());
+
+    call("/worker/tasks/" + encodeURIComponent(task.id) + "/submit", {
+      method: "POST",
+      body: form
+    }).then(function (data) {
+      var extra = data.location_verified
+        ? " Location site se " + Math.round(data.distance_m) + "m par verify hui."
+        : "";
+      loadTasks().then(function () {
+        message("listMsg", "✅ Kaam review ke liye bhej diya gaya." + extra, "ok");
+      });
+    }).catch(function (error) {
+      message("taskMsg", error.message);
+      window.scrollTo(0, 0);
+    }).finally(function () {
+      $("submitBtn").textContent = "Kaam submit karein";
+      updateSubmit();
+    });
+  };
+
+  // --- Start ---------------------------------------------------------------
+
+  try { token = localStorage.getItem(TOKEN_KEY); } catch (e) { token = null; }
+  if (token) { boot(); } else { show("loginView"); }
+})();
+</script>
+</body>
+</html>

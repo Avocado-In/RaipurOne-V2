@@ -176,6 +176,19 @@ export const workerAPI = {
   },
 };
 
+// Proof-of-work submitted from the field worker app at /worker. Each one carries a photo
+// of the finished job and the worker's GPS position; approving it resolves the complaint
+// and sends the citizen their Telegram update.
+export const submissionAPI = {
+  getPending: (signal) => axiosInstance.get('/worker/submissions/pending', { signal }),
+
+  approve: (submissionId, reviewNotes = '') =>
+    axiosInstance.post(`/worker/submissions/${submissionId}/approve`, { review_notes: reviewNotes }),
+
+  reject: (submissionId, reviewNotes) =>
+    axiosInstance.post(`/worker/submissions/${submissionId}/reject`, { review_notes: reviewNotes }),
+};
+
 export const geminiAPI = {
   transcribeImage: (imageUrl, signal) => {
     return axiosInstance.post('/gemini/transcribe', { imageUrl }, { signal });

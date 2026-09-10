@@ -6,7 +6,7 @@ Smart Grievance Management System for Raipur — a FastAPI backend, a React dash
 
 | Path | What it holds |
 | --- | --- |
-| `backend/` | FastAPI app (`app/api/routes`, `app/services`, `app/core`), Telegram intake worker, pytest suite |
+| `backend/` | FastAPI app (`app/api/routes`, `app/services`, `app/core`), Telegram intake worker, the field worker app page (`app/static/worker.html`), pytest suite |
 | `dashboard-frontend/` | React admin dashboard (Create React App + Tailwind) |
 | `supabase/` | `schema.sql`, `seed.sql`, migrations and `SCHEMA_GUIDE.md` |
 | `notebooks/` | AI experiments and `label_mapping.json` for the grievance classifier |
@@ -38,7 +38,9 @@ Required keys include `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `TELEGRAM
 
 ### 2. Database
 
-Apply `supabase/schema.sql` (and `supabase/telegram_migration.sql`) to your Supabase project, then optionally load `supabase/seed.sql`.
+Apply `supabase/schema.sql`, `supabase/telegram_migration.sql` and
+`supabase/work_submissions_migration.sql` to your Supabase project, then optionally load
+`supabase/seed.sql`.
 
 ### 3. Backend
 
@@ -55,7 +57,13 @@ cd backend
 python -m app.telegram_bot
 ```
 
-### 4. Frontend
+### 4. Worker app
+
+Nothing extra to install - the backend serves it at `/worker`. Open that URL on a phone on
+the same network (`http://<api-host>:8000/worker`) and sign in as a worker. See
+[`backend/README.md`](backend/README.md#worker-app) for the proof-of-work rules.
+
+### 5. Frontend
 
 ```bash
 cd dashboard-frontend
