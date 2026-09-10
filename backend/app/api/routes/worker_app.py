@@ -340,6 +340,48 @@ def list_my_submissions(worker: CurrentWorker):
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+# --- Keeping the review queue in step with the complaint --------------------
+
+#: What a pending submission becomes when its complaint is moved from somewhere else.
+#: ``under_review`` is absent on purpose - that is where a pending submission belongs.
+_SETTLEMENT: dict[str, str] = {
+    "resolved": "approved",
+    "closed": "approved",
+    "rejected": "rejected",
+    "in_progress": "rejected",
+    "assigned": "rejected",
+    "submitted": "rejected",
+}
+
+
+def settle_submission_for(complaint_id: str, status: str, actor_user_id: str | None = None) -> None:
+    """Resolve any pending submission when its complaint is moved outside the queue.
+
+    Called only from the operator-facing status routes. The worker app makes its own
+    transitions directly against the repository, so a worker submitting - which walks
+    the complaint through ``in_progress`` on its way to ``under_review`` - never lands
+    here and cannot reject its own fresh submission.
+
+    Best-effort: a stale queue row must never make an operator's status update fail.
+    """
+    target = _SETTLEMENT.get(str(status).lower())
+    if not target:
+        return
+    try:
+        changed = get_submission_store().settle_for_complaint(
+            complaint_id,
+            target,
+            reviewed_by=actor_user_id,
+            review_notes=f"Settled automatically when the complaint was marked {status}.",
+        )
+        if changed:
+            logger.info(
+                "Settled %d pending submission(s) for %s as %s", len(changed), complaint_id, target
+            )
+    except SubmissionsUnavailable as exc:
+        logger.warning("Could not settle submissions for %s: %s", complaint_id, exc)
+
+
 # --- Dashboard review endpoints ---------------------------------------------
 
 class ReviewRequest(BaseModel):

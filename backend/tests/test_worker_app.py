@@ -240,3 +240,32 @@ def test_submitting_records_the_photo_and_the_worker(field_worker):
     assert row["worker_user_id"] == WORKER_USER_ID
     assert row["photo_path"].startswith(f"{COMPLAINT_ID}/work-")
     assert row["status"] == "pending"
+
+
+# --- Keeping the queue in step with the complaint ---------------------------
+
+def test_resolving_from_the_ticket_screen_settles_the_pending_submission(field_worker, staff_headers):
+    """The bug this covers: the queue kept offering work that was already resolved."""
+    assert submit().status_code == 200
+    row = field_worker["store"].rows[0]
+    assert row["status"] == "pending"
+
+    settled: list[tuple] = []
+    field_worker["store"].settle_for_complaint = (
+        lambda complaint_id, status, reviewed_by=None, review_notes=None: (
+            settled.append((complaint_id, status)) or [row.update({"status": status}) or row]
+        )
+    )
+
+    response = client.patch(
+        f"/tickets/{COMPLAINT_ID}/status", headers=staff_headers, json={"status": "resolved"}
+    )
+    assert response.status_code == 200
+    assert settled == [(COMPLAINT_ID, "approved")]
+    assert row["status"] == "approved"
+
+
+def test_a_worker_submitting_does_not_settle_its_own_fresh_submission(field_worker):
+    """submit_work walks the complaint through in_progress; that must not reject it."""
+    assert submit().status_code == 200
+    assert field_worker["store"].rows[0]["status"] == "pending"

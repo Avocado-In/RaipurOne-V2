@@ -159,8 +159,11 @@ def update_legacy_ticket_status(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not updated:
         raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
-    from app.api.routes.complaints import notify_citizen_of_status
+    from app.api.routes.complaints import notify_citizen_of_status, settle_worker_submission
 
+    # This is the route the ticket screen uses, so a complaint resolved from there must
+    # also clear whatever the worker left waiting in the review queue.
+    settle_worker_submission(ticket_id, str(payload.get("status")), user.user_id)
     notify_citizen_of_status(updated, str(payload.get("status")))
     return updated
 

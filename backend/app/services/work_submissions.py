@@ -108,6 +108,33 @@ class WorkSubmissionStore:
         rows = data if isinstance(data, list) else [data]
         return rows[0] if rows else None
 
+    def settle_for_complaint(
+        self,
+        complaint_id: str,
+        status: str,
+        reviewed_by: str | None = None,
+        review_notes: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Close out whatever is still pending on a complaint. Returns the rows changed.
+
+        A complaint can be resolved from the ticket screen without anyone opening the
+        review queue. Without this the submission stayed ``pending`` for ever: the queue
+        kept offering work that was already finished, and approving it later re-messaged
+        the citizen about a complaint they had long since been told about.
+        """
+        payload = {
+            "status": status,
+            "review_notes": review_notes or None,
+            "reviewed_by": reviewed_by or None,
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        data = self._request(
+            "PATCH",
+            params={"complaint_id": f"eq.{complaint_id}", "status": "eq.pending"},
+            payload=payload,
+        )
+        return data if isinstance(data, list) else [data]
+
     # --- Reads --------------------------------------------------------------
 
     def get(self, submission_id: str) -> dict[str, Any] | None:

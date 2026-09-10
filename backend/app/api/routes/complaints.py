@@ -201,6 +201,7 @@ def update_complaint_status(
         raise HTTPException(status_code=404, detail=f"Complaint {complaint_id} not found")
 
     add_notification("Complaint updated", f"{updated['title']} moved to {payload.status}.", "info", complaint_id)
+    settle_worker_submission(complaint_id, payload.status, user.user_id)
     notify_citizen_of_status(updated, payload.status)
     return updated
 
@@ -233,6 +234,16 @@ def assign_complaint(
     )
     notify_citizen_of_status(updated, payload.status)
     return updated
+
+
+def settle_worker_submission(complaint_id: str, status: str, actor_user_id: str | None) -> None:
+    """Close out a pending work submission when the complaint moves. Never raises."""
+    try:
+        from app.api.routes.worker_app import settle_submission_for
+
+        settle_submission_for(complaint_id, status, actor_user_id)
+    except Exception as exc:  # pragma: no cover - queue tidying is best-effort
+        logger.warning("Could not settle work submission for %s: %s", complaint_id, exc)
 
 
 def notify_citizen_of_status(complaint: dict, status: str) -> None:

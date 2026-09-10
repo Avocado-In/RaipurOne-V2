@@ -53,6 +53,7 @@ function TicketDetail() {
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [transcriptions, setTranscriptions] = useState({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [updating, setUpdating] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [showLightbox, setShowLightbox] = useState(false);
@@ -107,11 +108,21 @@ function TicketDetail() {
   const fetchTicket = async () => {
     try {
       setLoading(true);
+      setLoadError('');
       const response = await ticketAPI.getTicketById(id);
       const normalizedTicket = normalizeTicket(response?.data);
       setTicketData(normalizedTicket);
     } catch (error) {
       console.error('Error fetching ticket:', error);
+      // A failed request is not the same as a ticket that does not exist. Reporting
+      // every network error, 401 or 500 as "Ticket not found" sent operators looking
+      // for a deleted record when the ticket was there the whole time.
+      const status = error?.response?.status;
+      setLoadError(
+        status === 404
+          ? ''
+          : error?.response?.data?.detail || error.message || 'Could not load this ticket.'
+      );
     } finally {
       setLoading(false);
     }
@@ -162,8 +173,12 @@ function TicketDetail() {
     try {
       setUpdating(true);
       const ticketId = ticketData.ticket_id || ticketData.ticketId || ticketData.id;
-      const response = await ticketAPI.updateTicketStatus(ticketId, newStatus);
-      setTicketData(response.data.data);
+      await ticketAPI.updateTicketStatus(ticketId, newStatus);
+      // PATCH /tickets/{id}/status answers with the complaint itself, so the old
+      // `response.data.data` was always undefined - the update succeeded, the citizen
+      // was messaged, and the page then rendered "Ticket not found" over the top of it.
+      // Re-reading gives the same shape the page was built against.
+      await fetchTicket();
       return true;
     } catch (error) {
       console.error('Error updating status:', error);
@@ -226,8 +241,12 @@ function TicketDetail() {
             <svg className="w-16 h-16 mx-auto mb-4 text-black/20 dark:text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p className="text-lg font-medium text-black dark:text-white mb-2">Ticket not found</p>
-            <p className="text-sm text-black/60 dark:text-white/60 mb-6">This ticket may have been deleted or doesn't exist.</p>
+            <p className="text-lg font-medium text-black dark:text-white mb-2">
+              {loadError ? 'Could not load this ticket' : 'Ticket not found'}
+            </p>
+            <p className="text-sm text-black/60 dark:text-white/60 mb-6">
+              {loadError || "This ticket may have been deleted or doesn't exist."}
+            </p>
             <button
               onClick={() => navigate('/tickets')}
               className="px-6 py-2.5 bg-black dark:bg-white text-white dark:text-black rounded-lg font-medium hover:opacity-80 transition-opacity"
