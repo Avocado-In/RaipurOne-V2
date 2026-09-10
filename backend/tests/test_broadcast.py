@@ -148,3 +148,27 @@ def test_a_too_short_message_is_rejected_before_anything_is_sent(wired):
     )
     assert response.status_code == 422
     assert wired == []
+
+
+# --- Audience sources -------------------------------------------------------
+
+def test_the_audience_includes_people_who_only_pressed_start(monkeypatch):
+    """A chat that never filed anything is still reachable and must be included."""
+    def fake_request(method, path, params=None, payload=None):
+        if path == "/telegram_subscribers":
+            return [{"chat_id": 111}, {"chat_id": 999}]  # 999 has never complained
+        return [{"telegram_chat_id": 111}, {"telegram_chat_id": 222}]
+
+    monkeypatch.setattr(broadcast, "_request", fake_request)
+    assert sorted(broadcast.reachable_chat_ids()) == [111, 222, 999]
+
+
+def test_a_missing_subscriber_table_falls_back_to_complaints(monkeypatch):
+    """A deployment that has not run the migration must still be able to broadcast."""
+    def fake_request(method, path, params=None, payload=None):
+        if path == "/telegram_subscribers":
+            raise broadcast.BroadcastUnavailable("relation does not exist")
+        return [{"telegram_chat_id": 222}]
+
+    monkeypatch.setattr(broadcast, "_request", fake_request)
+    assert broadcast.reachable_chat_ids() == [222]

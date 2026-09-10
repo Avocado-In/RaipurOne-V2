@@ -20,6 +20,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from datetime import datetime, timezone
+
 import httpx
 
 from app.core.config import settings
@@ -60,11 +62,41 @@ def telegram_username(chat_id: int | str) -> str:
     return f"tg_{chat_id}"
 
 
+def remember_subscriber(chat_id: int | str, username: str | None = None) -> None:
+    """Record that this chat is reachable, so civic broadcasts include it.
+
+    Every path that identifies a Telegram citizen calls this, which is the point: a
+    person who pressed /start and never filed anything has still opened a conversation
+    with the bot and would expect a water-cut notice. Deriving the audience from
+    complaints alone quietly left them out.
+
+    Best-effort - failing to note a subscriber must never break the reply the citizen is
+    waiting for.
+    """
+    if not _configured():
+        return
+    try:
+        httpx.post(
+            f"{_base()}/telegram_subscribers",
+            headers={**_headers(prefer="resolution=merge-duplicates,return=minimal")},
+            json={
+                "chat_id": int(chat_id),
+                "username": username or telegram_username(chat_id),
+                "last_seen": datetime.now(timezone.utc).isoformat(),
+                "is_active": True,
+            },
+            timeout=10,
+        )
+    except (httpx.HTTPError, TypeError, ValueError) as exc:
+        logger.warning("Could not record subscriber %s: %s", chat_id, exc)
+
+
 def get_or_create_citizen(chat_id: int | str, display_name: str | None = None) -> dict[str, Any] | None:
     """Return the ``users`` row for this Telegram chat, creating it on first contact."""
     if not _configured():
         return None
     username = telegram_username(chat_id)
+    remember_subscriber(chat_id, username)
     try:
         found = httpx.get(
             f"{_base()}/users",

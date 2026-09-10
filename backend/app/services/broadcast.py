@@ -1,12 +1,14 @@
 """Civic announcements sent out to citizens on Telegram.
 
-The audience is not a mailing list anyone signed up for: it is everyone who has actually
-filed a complaint through the R1 bot. Their chat id is already on the complaint, which is
-the only reason we are able to reach them at all - and the only justification for doing
-so, since they opened that conversation themselves.
+The audience is not a mailing list anyone signed up for: it is everyone who has opened a
+conversation with the R1 bot. That is the only reason we are able to reach them at all -
+and the only justification for doing so, since they started the chat themselves.
 
-Anything that never reached us on Telegram has no chat to answer on, so a web-filed
-complaint contributes no recipient. There is deliberately no other channel here: FCM and
+Reachability is recorded the first time the bot hears from a chat, so pressing /start is
+enough; it does not take filing a complaint. A web-filed complaint contributes no
+recipient, because it never reached us on Telegram and has no chat to answer on.
+
+There is deliberately no other channel here: FCM and
 WhatsApp were offered by the dashboard but had nothing behind them, and a button that
 claims to have messaged a city and did nothing is worse than no button.
 """
@@ -82,22 +84,49 @@ def _request(method: str, path: str, params: dict[str, str] | None = None, paylo
 
 # --- Audience ---------------------------------------------------------------
 
-def reachable_chat_ids() -> list[int]:
-    """Every distinct Telegram chat that has filed a complaint through R1."""
-    rows = _request(
-        "GET",
-        "/complaints",
-        params={"select": "telegram_chat_id", "telegram_chat_id": "not.is.null"},
-    )
-    seen: dict[int, None] = {}
+def _collect(rows: Any, key: str, into: dict[int, None]) -> None:
     for row in rows or []:
-        chat_id = row.get("telegram_chat_id")
-        if chat_id is None:
+        value = row.get(key)
+        if value is None:
             continue
         try:
-            seen[int(chat_id)] = None
+            into[int(value)] = None
         except (TypeError, ValueError):
             continue
+
+
+def reachable_chat_ids() -> list[int]:
+    """Every Telegram chat this bot can message.
+
+    Two sources, unioned. ``telegram_subscribers`` is the real answer: the bot records a
+    chat the first time it hears from it, so someone who pressed /start and never
+    reported anything is still included. Complaints are kept as a second source so the
+    audience is correct even on a deployment where that table has not been created yet,
+    or for a chat that predates it and has not written since.
+    """
+    seen: dict[int, None] = {}
+    try:
+        _collect(
+            _request(
+                "GET",
+                "/telegram_subscribers",
+                params={"select": "chat_id", "is_active": "is.true"},
+            ),
+            "chat_id",
+            seen,
+        )
+    except BroadcastUnavailable as exc:
+        logger.warning("Subscriber list unavailable, falling back to complaints: %s", exc)
+
+    _collect(
+        _request(
+            "GET",
+            "/complaints",
+            params={"select": "telegram_chat_id", "telegram_chat_id": "not.is.null"},
+        ),
+        "telegram_chat_id",
+        seen,
+    )
     return list(seen)
 
 

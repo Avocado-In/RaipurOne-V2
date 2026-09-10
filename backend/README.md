@@ -68,9 +68,11 @@ migration.
 ## Civic broadcasts
 
 The dashboard's **Push Notifications** screen sends one announcement to every citizen who
-has filed a complaint through the R1 Telegram bot. There is no subscriber list: the
-audience is the distinct set of `telegram_chat_id` values on `public.complaints`, which
-are exactly the people who opened a conversation with the bot themselves.
+has opened a conversation with the R1 Telegram bot. Nobody signs up: the bot records a
+chat in `public.telegram_subscribers` the first time it hears from it, so pressing
+`/start` is enough - it does not take filing a complaint. Chat ids on
+`public.complaints` are unioned in as a second source, which keeps the audience correct
+on a deployment where `telegram_subscribers_migration.sql` has not been run yet.
 
 Telegram is the only channel. The screen used to offer FCM and WhatsApp beside it with
 nothing implemented behind either, so a broadcast reported as "sent to 3 channels" had in

@@ -53,8 +53,9 @@ Required keys include `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `TELEGRAM
 ### 2. Database
 
 Apply `supabase/schema.sql`, `supabase/telegram_migration.sql`,
-`supabase/work_submissions_migration.sql` and `supabase/broadcasts_migration.sql` to your
-Supabase project, then optionally load `supabase/seed.sql`.
+`supabase/work_submissions_migration.sql`, `supabase/broadcasts_migration.sql` and
+`supabase/telegram_subscribers_migration.sql` to your Supabase project, then optionally
+load `supabase/seed.sql`.
 
 ### 3. Backend
 
