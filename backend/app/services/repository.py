@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -6,22 +7,48 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
+from app.core.domain import (
+    canonicalize_category,
+    canonicalize_priority,
+    canonicalize_status,
+    validate_transition,
+)
+from app.services import audit
+
+logger = logging.getLogger("raipurone.repository")
+
+
+# Category/priority/status vocabulary lives in app.core.domain so every writer agrees.
+_canonicalize_category = canonicalize_category
+
+
+def _uuid_or_none(value: Any) -> str | None:
+    """Worker/user id columns are uuid; an employee code such as EMP001 is not.
+
+    Passing one through produced a Postgres 22P02 and a 500 on complaint creation, so
+    non-uuid values are dropped rather than sent to the database.
+    """
+    try:
+        return str(uuid.UUID(str(value)))
+    except (ValueError, AttributeError, TypeError):
+        return None
 
 
 def normalize_complaint_for_storage(complaint: dict[str, Any]) -> dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
+    category = _canonicalize_category(complaint.get("category"))
     return {
         "id": str(complaint.get("id") or uuid.uuid4()),
         "citizen_user_id": complaint.get("citizen_user_id"),
         "citizen_name": complaint.get("citizen_name") or "Citizen",
         "title": complaint.get("title") or "",
         "description": complaint.get("description") or "",
-        "category": complaint.get("category") or "general",
+        "category": category,
         "department_id": complaint.get("department_id"),
-        "priority": str(complaint.get("priority") or "medium").lower(),
-        "status": str(complaint.get("status") or "submitted").lower(),
-        "assigned_worker_id": complaint.get("assigned_worker_id"),
-        "recommended_worker_id": complaint.get("recommended_worker_id"),
+        "priority": canonicalize_priority(complaint.get("priority")),
+        "status": canonicalize_status(complaint.get("status")),
+        "assigned_worker_id": _uuid_or_none(complaint.get("assigned_worker_id")),
+        "recommended_worker_id": _uuid_or_none(complaint.get("recommended_worker_id")),
         "ai_analysis": complaint.get("ai_analysis") or {},
         "recommended_worker_payload": complaint.get("recommended_worker_payload") or {},
         "location_text": complaint.get("location_text"),
@@ -41,8 +68,9 @@ def normalize_complaint_for_storage(complaint: dict[str, Any]) -> dict[str, Any]
 
 def normalize_complaint_record(row: dict[str, Any], fallback_id: str | None = None) -> dict[str, Any]:
     department = row.get("department")
-    if department is None and row.get("category"):
-        department = str(row.get("category", "")).title()
+    category = _canonicalize_category(row.get("category"))
+    if department is None and category:
+        department = str(category).title()
 
     return {
         "id": str(row.get("id") or fallback_id or str(uuid.uuid4())),
@@ -50,11 +78,11 @@ def normalize_complaint_record(row: dict[str, Any], fallback_id: str | None = No
         "citizen_name": row.get("citizen_name") or "Citizen",
         "title": row.get("title") or "",
         "description": row.get("description") or "",
-        "category": row.get("category") or "general",
+        "category": category,
         "department": department,
         "department_id": row.get("department_id"),
-        "priority": row.get("priority") or "medium",
-        "status": row.get("status") or "submitted",
+        "priority": canonicalize_priority(row.get("priority")),
+        "status": canonicalize_status(row.get("status")),
         "assigned_worker_id": row.get("assigned_worker_id"),
         "assigned_worker": row.get("assigned_worker"),
         "recommended_worker_id": row.get("recommended_worker_id"),
@@ -77,14 +105,35 @@ def normalize_complaint_record(row: dict[str, Any], fallback_id: str | None = No
 
 
 class InMemoryComplaintRepository:
+    @staticmethod
+    def _normalize_worker_record(worker: dict[str, Any]) -> dict[str, Any]:
+        departments = [str(item).strip() for item in (worker.get("departments") or []) if str(item).strip()]
+        worker_id = str(worker.get("worker_id") or worker.get("id") or uuid.uuid4())
+        return {
+            "id": worker.get("id") or worker_id,
+            "worker_id": worker.get("worker_id") or worker_id,
+            "name": worker.get("name") or "Worker",
+            "phone": worker.get("phone") or worker.get("phone_number") or "",
+            "phone_number": worker.get("phone_number") or worker.get("phone") or "",
+            "email": worker.get("email") or "",
+            "departments": departments,
+            "status": (worker.get("status") or "available").lower(),
+            "is_active": worker.get("is_active", True),
+            "active_tasks": worker.get("active_tasks") or 0,
+            "completed_tasks": worker.get("completed_tasks") or 0,
+            "rating": worker.get("rating") or 0,
+            "work_type": worker.get("work_type") or ", ".join(departments) or "General",
+        }
+
     def list_workers(self) -> list[dict[str, Any]]:
         return getattr(self, "_workers", [])
 
     def create_worker(self, worker: dict[str, Any]) -> dict[str, Any]:
         if not hasattr(self, "_workers"):
             self._workers = []
-        self._workers.append(worker)
-        return worker
+        normalized = self._normalize_worker_record(worker)
+        self._workers.append(normalized)
+        return normalized
 
     def get_worker(self, worker_id: str) -> dict[str, Any] | None:
         return next((worker for worker in self.list_workers() if worker.get("worker_id") == worker_id or worker.get("id") == worker_id), None)
@@ -96,7 +145,7 @@ class InMemoryComplaintRepository:
                 "citizen_name": "Asha Verma",
                 "title": "Streetlight outage near Sector 12",
                 "description": "Multiple streetlights in the sector are not functioning after dusk.",
-                "category": "lighting",
+                "category": "Street Lights",
                 "department": "Public Works",
                 "department_id": None,
                 "priority": "high",
@@ -105,7 +154,7 @@ class InMemoryComplaintRepository:
                 "assigned_worker": "Rajesh Kumar",
                 "recommended_worker_id": None,
                 "recommended_worker_payload": {"recommended_worker": "worker-24", "department": "Public Works", "confidence": 0.93},
-                "ai_analysis": {"category": "infrastructure", "confidence": 0.91, "priority": "high"},
+                "ai_analysis": {"category": "Street Lights", "confidence": 0.91, "priority": "high"},
                 "location_text": None,
                 "location_lat": None,
                 "location_lng": None,
@@ -123,7 +172,7 @@ class InMemoryComplaintRepository:
                 "citizen_name": "Vikram Rao",
                 "title": "Garbage accumulation at market square",
                 "description": "Overflowing bins and blocked drains near the market entrance.",
-                "category": "sanitation",
+                "category": "Sanitation",
                 "department": "Sanitation",
                 "department_id": None,
                 "priority": "medium",
@@ -132,7 +181,7 @@ class InMemoryComplaintRepository:
                 "assigned_worker": "Priya Sharma",
                 "recommended_worker_id": None,
                 "recommended_worker_payload": {"recommended_worker": "worker-17", "department": "Sanitation", "confidence": 0.84},
-                "ai_analysis": {"category": "general", "confidence": 0.74, "priority": "medium"},
+                "ai_analysis": {"category": "Sanitation", "confidence": 0.74, "priority": "medium"},
                 "location_text": None,
                 "location_lat": None,
                 "location_lng": None,
@@ -150,7 +199,7 @@ class InMemoryComplaintRepository:
                 "citizen_name": "Nisha Joshi",
                 "title": "Water leakage near the community tank",
                 "description": "Water leakage is causing pooling and traffic disruption.",
-                "category": "water",
+                "category": "Water Supply",
                 "department": "Water Supply",
                 "department_id": None,
                 "priority": "high",
@@ -159,7 +208,7 @@ class InMemoryComplaintRepository:
                 "assigned_worker": "Amit Singh",
                 "recommended_worker_id": None,
                 "recommended_worker_payload": {"recommended_worker": "worker-11", "department": "Water Supply", "confidence": 0.93},
-                "ai_analysis": {"category": "infrastructure", "confidence": 0.91, "priority": "high"},
+                "ai_analysis": {"category": "Water Supply", "confidence": 0.91, "priority": "high"},
                 "location_text": None,
                 "location_lat": None,
                 "location_lng": None,
@@ -170,6 +219,69 @@ class InMemoryComplaintRepository:
                 "updated_at": "2025-07-19T16:45:00Z",
                 "resolved_at": "2025-07-19T16:45:00Z",
                 "closed_at": None,
+            },
+        ]
+        # Seed a small set of in-memory workers for local development and testing
+        self._workers = [
+            {
+                "id": "W-11",
+                "worker_id": "worker-11",
+                "name": "Amit Singh",
+                "phone": "",
+                "phone_number": "",
+                "email": "",
+                "departments": ["Water Supply", "water"],
+                "status": "available",
+                "is_active": True,
+                "active_tasks": 0,
+                "completed_tasks": 5,
+                "rating": 4.2,
+                "work_type": "Water",
+            },
+            {
+                "id": "W-17",
+                "worker_id": "worker-17",
+                "name": "Priya Sharma",
+                "phone": "",
+                "phone_number": "",
+                "email": "",
+                "departments": ["Sanitation", "sanitation"],
+                "status": "available",
+                "is_active": True,
+                "active_tasks": 1,
+                "completed_tasks": 12,
+                "rating": 4.6,
+                "work_type": "Sanitation",
+            },
+            {
+                "id": "W-24",
+                "worker_id": "worker-24",
+                "name": "Rajesh Kumar",
+                "phone": "",
+                "phone_number": "",
+                "email": "",
+                "departments": ["Public Works", "street lights"],
+                "status": "available",
+                "is_active": True,
+                "active_tasks": 2,
+                "completed_tasks": 20,
+                "rating": 4.0,
+                "work_type": "Public Works",
+            },
+            {
+                "id": "W-09",
+                "worker_id": "worker-09",
+                "name": "Dr. Neha",
+                "phone": "",
+                "phone_number": "",
+                "email": "",
+                "departments": ["Health", "hospital"],
+                "status": "available",
+                "is_active": True,
+                "active_tasks": 0,
+                "completed_tasks": 3,
+                "rating": 4.8,
+                "work_type": "Health",
             },
         ]
 
@@ -189,10 +301,17 @@ class InMemoryComplaintRepository:
         self._store.insert(0, complaint)
         return complaint
 
-    def update_complaint(self, complaint_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+    def update_complaint(
+        self,
+        complaint_id: str,
+        updates: dict[str, Any],
+        actor_user_id: str | None = None,
+    ) -> dict[str, Any] | None:
         complaint = self.get_complaint(complaint_id)
         if complaint is None:
             return None
+        if "status" in updates:
+            updates = {**updates, "status": validate_transition(complaint.get("status"), updates["status"])}
         complaint.update(updates)
         return complaint
 
@@ -217,31 +336,55 @@ class SupabaseComplaintRepository(InMemoryComplaintRepository):
         }
         self._fallback_store = InMemoryComplaintRepository()
 
+    # PostgREST embed that pulls the worker's display name and department name.
+    WORKER_SELECT = "*,users(username,role),departments(name)"
+
     @staticmethod
     def _worker_record(row: dict[str, Any]) -> dict[str, Any]:
+        user = row.get("users") or {}
+        department = row.get("departments")
+        # `departments` is an embedded object here, but older rows/payloads used a list of names.
+        if isinstance(department, dict):
+            department_names = [department.get("name")] if department.get("name") else []
+        elif isinstance(department, list):
+            department_names = [str(item) for item in department if item]
+        else:
+            department_names = []
+
+        name = (
+            row.get("full_name")
+            or row.get("name")
+            or user.get("username")
+            or row.get("employee_code")
+            or "Worker"
+        )
+        status = row.get("availability") or row.get("status") or "available"
         return {
             "id": row.get("id"),
-            "worker_id": row.get("worker_code") or row.get("id"),
-            "name": row.get("full_name") or row.get("name") or "Worker",
+            "worker_id": row.get("employee_code") or row.get("worker_code") or row.get("id"),
+            "name": name,
             "phone": row.get("phone") or row.get("phone_number") or "",
             "phone_number": row.get("phone") or row.get("phone_number") or "",
             "email": row.get("email") or "",
-            "departments": row.get("departments") or [],
-            "status": row.get("availability") or row.get("status") or "available",
-            "is_active": (row.get("availability") or "available") != "offline",
-            "active_tasks": row.get("workload") or 0,
+            "departments": department_names,
+            "status": status,
+            "is_active": row.get("is_available", status != "offline"),
+            "active_tasks": row.get("workload_count") or row.get("workload") or 0,
             "completed_tasks": row.get("completed_tasks") or 0,
             "rating": row.get("rating") or 0,
-            "work_type": ", ".join(row.get("departments") or []) or "General",
+            "work_type": row.get("designation") or ", ".join(department_names) or "General",
         }
 
     def list_workers(self) -> list[dict[str, Any]]:
         try:
-            data = self._request("GET", "/workers", params={"select": "*"})
+            data = self._request("GET", "/workers", params={"select": self.WORKER_SELECT})
+            if not data:
+                return self._fallback_store.list_workers()
             return [self._worker_record(item) for item in data]
-        except (httpx.HTTPError, ValueError, RuntimeError):
-            if self.strict or settings.app_env == "production":
+        except (httpx.HTTPError, ValueError, RuntimeError) as exc:
+            if self.strict or not settings.allow_demo_fallback:
                 raise
+            logger.warning("Supabase list_workers failed, serving in-memory demo data: %s", exc)
             return self._fallback_store.list_workers()
 
     def create_worker(self, worker: dict[str, Any]) -> dict[str, Any]:
@@ -273,7 +416,7 @@ class SupabaseComplaintRepository(InMemoryComplaintRepository):
                 return {**self._worker_record(row), "worker_id": row.get("id")}
             return self._fallback_store.create_worker({**worker, "status": "available", "active_tasks": 0, "completed_tasks": 0, "rating": 0})
         except (httpx.HTTPError, ValueError):
-            if self.strict or settings.app_env == "production":
+            if self.strict or not settings.allow_demo_fallback:
                 raise
             return self._fallback_store.create_worker({**worker, "status": "available", "active_tasks": 0, "completed_tasks": 0, "rating": 0})
 
@@ -359,11 +502,21 @@ class SupabaseComplaintRepository(InMemoryComplaintRepository):
 
     def list_complaints(self) -> list[dict[str, Any]]:
         try:
-            data = self._request("GET", "/complaints", params={"select": "*"})
+            # Newest first. Without an explicit order PostgREST returns rows in physical
+            # order, so a complaint filed a minute ago landed at the bottom of the
+            # dashboard list and read as "not showing up at all".
+            #
+            # Ordered by submitted_at, not created_at: the deployed complaints table has
+            # no created_at column even though schema.sql declares one, and submitted_at
+            # is when the citizen actually filed the complaint.
+            data = self._request(
+                "GET", "/complaints", params={"select": "*", "order": "submitted_at.desc"}
+            )
             return [normalize_complaint_record(item) for item in data]
-        except (httpx.HTTPError, ValueError, RuntimeError):
-            if self.strict or settings.app_env == "production":
+        except (httpx.HTTPError, ValueError, RuntimeError) as exc:
+            if self.strict or not settings.allow_demo_fallback:
                 raise
+            logger.warning("Supabase list_complaints failed, serving in-memory demo data: %s", exc)
             return self._fallback_store.list_complaints()
 
     def get_complaint(self, complaint_id: str) -> dict[str, Any] | None:
@@ -372,9 +525,10 @@ class SupabaseComplaintRepository(InMemoryComplaintRepository):
             if not data:
                 return None
             return normalize_complaint_record(data[0], fallback_id=complaint_id)
-        except (httpx.HTTPError, ValueError, RuntimeError):
-            if self.strict or settings.app_env == "production":
+        except (httpx.HTTPError, ValueError, RuntimeError) as exc:
+            if self.strict or not settings.allow_demo_fallback:
                 raise
+            logger.warning("Supabase get_complaint failed, serving in-memory demo data: %s", exc)
             return self._fallback_store.get_complaint(complaint_id)
 
     def create_complaint(self, complaint: dict[str, Any]) -> dict[str, Any]:
@@ -395,31 +549,79 @@ class SupabaseComplaintRepository(InMemoryComplaintRepository):
             data = self._request("POST", "/complaints", payload=stored_payload)
             row = data[0] if isinstance(data, list) else data
             return normalize_complaint_record(row, fallback_id=public_complaint.get("id"))
-        except (httpx.HTTPError, ValueError, RuntimeError):
-            if self.strict or settings.app_env == "production":
+        except (httpx.HTTPError, ValueError, RuntimeError) as exc:
+            if self.strict or not settings.allow_demo_fallback:
                 raise
+            logger.warning("Supabase create_complaint failed, storing in memory only: %s", exc)
             self._fallback_store.create_complaint(public_complaint)
             return public_complaint
 
-    def update_complaint(self, complaint_id: str, updates: dict[str, Any]) -> dict[str, Any] | None:
+    def update_complaint(
+        self,
+        complaint_id: str,
+        updates: dict[str, Any],
+        actor_user_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Apply an update after validating any lifecycle transition, then audit it.
+
+        Raises :class:`InvalidStatusTransition` for illegal jumps such as ``closed ->
+        submitted``, which this method previously accepted as a blind field merge.
+        """
+        existing = self.get_complaint(complaint_id)
+        if existing is None:
+            return None
+
         payload_updates: dict[str, Any] = {}
         if "status" in updates:
-            payload_updates["status"] = str(updates["status"]).lower()
+            # Raises on an illegal transition; the route turns that into HTTP 409.
+            payload_updates["status"] = validate_transition(existing.get("status"), updates["status"])
         if "priority" in updates:
-            payload_updates["priority"] = str(updates["priority"]).lower()
-        if "department" in updates:
-            payload_updates["department"] = updates["department"]
+            payload_updates["priority"] = canonicalize_priority(updates["priority"])
+        if "assigned_worker_id" in updates:
+            payload_updates["assigned_worker_id"] = _uuid_or_none(updates["assigned_worker_id"])
+        if "resolution_summary" in updates:
+            payload_updates["resolution_summary"] = updates["resolution_summary"]
+
+        new_status = payload_updates.get("status")
+        now = datetime.now(timezone.utc).isoformat()
+        payload_updates["updated_at"] = now
+        if new_status == "resolved":
+            payload_updates["resolved_at"] = now
+        elif new_status == "closed":
+            payload_updates["closed_at"] = now
+
+        # `department` is not a column in the live complaints table; keep it out of the
+        # PATCH body and re-attach it to the response for API compatibility.
+        department_override = updates.get("department")
 
         try:
             data = self._request("PATCH", "/complaints", params={"id": f"eq.{complaint_id}"}, payload=payload_updates)
             row = data[0] if isinstance(data, list) else data
             updated = normalize_complaint_record(row, fallback_id=complaint_id)
-            if "department" in updates:
-                updated["department"] = updates["department"]
+            if department_override:
+                updated["department"] = department_override
+
+            audit.record_change(
+                "complaints",
+                complaint_id,
+                f"status:{new_status}" if new_status else "update",
+                actor_user_id=actor_user_id,
+                before={k: existing.get(k) for k in payload_updates if k in existing},
+                after=payload_updates,
+            )
+            if "assigned_worker_id" in payload_updates:
+                audit.record_assignment(
+                    complaint_id,
+                    to_worker_id=payload_updates.get("assigned_worker_id"),
+                    from_worker_id=existing.get("assigned_worker_id"),
+                    assigned_by=actor_user_id,
+                    reason=f"status={new_status}" if new_status else None,
+                )
             return updated
-        except (httpx.HTTPError, ValueError, RuntimeError):
-            if self.strict or settings.app_env == "production":
+        except (httpx.HTTPError, ValueError, RuntimeError) as exc:
+            if self.strict or not settings.allow_demo_fallback:
                 raise
+            logger.warning("Supabase update_complaint failed, updating in-memory copy: %s", exc)
             existing = self._fallback_store.get_complaint(complaint_id)
             if existing is None:
                 return None
@@ -433,12 +635,15 @@ _repository: InMemoryComplaintRepository | None = None
 def get_complaint_repository() -> InMemoryComplaintRepository:
     global _repository
     if _repository is None:
-        try:
-            _repository = SupabaseComplaintRepository()
-        except RuntimeError:
-            if settings.app_env == "production":
-                raise
+        if not settings.supabase_url or not (settings.supabase_service_role_key or settings.supabase_anon_key):
             _repository = InMemoryComplaintRepository()
+        else:
+            try:
+                _repository = SupabaseComplaintRepository()
+            except RuntimeError:
+                if settings.app_env == "production":
+                    raise
+                _repository = InMemoryComplaintRepository()
     return _repository
 
 

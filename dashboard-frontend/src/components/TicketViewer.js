@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { imageAPI, workerAPI } from '../api';
 
 const TicketViewer = ({ ticket, onClose, onAssignWorker, onRespond, onUpdate }) => {
   const [response, setResponse] = useState('');
@@ -6,11 +7,41 @@ const TicketViewer = ({ ticket, onClose, onAssignWorker, onRespond, onUpdate }) 
   const [selectedImage, setSelectedImage] = useState(null);
   const [showAssignWorker, setShowAssignWorker] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [imagesLoading, setImagesLoading] = useState(false);
 
+  // The ticket list payload carries no images, so the gallery stayed empty for every
+  // complaint - including the Telegram photos, which are uploaded and stored correctly.
+  // Fetch them for the open ticket unless the caller already supplied them.
   useEffect(() => {
-    if (ticket?.images) {
+    if (ticket?.images?.length) {
       setImages(ticket.images);
+      return undefined;
     }
+
+    const ticketId = ticket?.ticket_id || ticket?.ticketId || ticket?.id;
+    if (!ticketId) {
+      setImages([]);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setImagesLoading(true);
+    setImages([]);
+
+    imageAPI
+      .getTicketImages(ticketId, controller.signal)
+      .then((response) => {
+        const fetched = response?.data?.images || response?.data?.data || [];
+        setImages(Array.isArray(fetched) ? fetched : []);
+      })
+      .catch((error) => {
+        if (error.name !== 'CanceledError' && error.code !== 'ERR_CANCELED') {
+          console.error('Failed to load complaint images:', error);
+        }
+      })
+      .finally(() => setImagesLoading(false));
+
+    return () => controller.abort();
   }, [ticket]);
 
   const handleRespond = async () => {
@@ -66,7 +97,7 @@ const TicketViewer = ({ ticket, onClose, onAssignWorker, onRespond, onUpdate }) 
                 ticket.priority === 'medium' ? 'bg-yellow-500 text-black' :
                 'bg-green-500'
               }`}>
-                ðŸ”¥ {ticket.priority}
+                🔥 {ticket.priority}
               </span>
             )}
             
@@ -96,6 +127,12 @@ const TicketViewer = ({ ticket, onClose, onAssignWorker, onRespond, onUpdate }) 
             </div>
 
             {/* Images Gallery */}
+            {imagesLoading && images.length === 0 && (
+              <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-xl">
+                <p className="text-sm text-black/60 dark:text-white/60">Loading images...</p>
+              </div>
+            )}
+
             {images.length > 0 && (
               <div className="bg-gray-50 dark:bg-white/5 p-6 rounded-xl">
                 <h3 className="text-sm font-bold text-black/60 dark:text-white/60 uppercase mb-3">
@@ -140,7 +177,7 @@ const TicketViewer = ({ ticket, onClose, onAssignWorker, onRespond, onUpdate }) 
                 </div>
               </div>
               <div className="mt-4 text-sm text-black/60 dark:text-white/60">
-                <p>ðŸ“… {new Date(ticket?.createdAt).toLocaleString()}</p>
+                <p>📅 {new Date(ticket?.createdAt).toLocaleString()}</p>
               </div>
             </div>
           </div>
@@ -167,14 +204,14 @@ const TicketViewer = ({ ticket, onClose, onAssignWorker, onRespond, onUpdate }) 
               
               {/* Coordinates */}
               <div className="flex items-center gap-3 bg-white dark:bg-black rounded-lg px-4 py-3 border border-black/10 dark:border-white/10 mb-3">
-                <span className="text-xl">ðŸ“</span>
+                <span className="text-xl">📍</span>
                 <span className="text-sm font-mono font-semibold text-black dark:text-white flex-1">
                   {location.lat}, {location.lng}
                 </span>
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(`${location.lat}, ${location.lng}`);
-                    alert('ðŸ“‹ Coordinates copied!');
+                    alert('📋 Coordinates copied!');
                   }}
                   className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors"
                   title="Copy coordinates"
@@ -327,10 +364,9 @@ const WorkerAssignmentModal = ({ ticket, onClose, onAssign }) => {
   const fetchAvailableWorkers = useCallback(async () => {
     try {
       setLoading(true);
-      const apiUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://127.0.0.1:8000';
-      const response = await fetch(`${apiUrl}/api/workers/available?department=${ticket.department || ''}`);
-      const data = await response.json();
-      setWorkers(data.data || []);
+      const response = await workerAPI.getAvailable(ticket.department);
+      const data = response?.data || {};
+      setWorkers(data.workers || data.data || []);
     } catch (error) {
       console.error('Error fetching workers:', error);
     } finally {
@@ -346,19 +382,13 @@ const WorkerAssignmentModal = ({ ticket, onClose, onAssign }) => {
     if (!selectedWorker) return;
     
     try {
-      const apiUrl = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://127.0.0.1:8000';
-      const response = await fetch(`${apiUrl}/api/workers/assign`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workerId: selectedWorker.worker_id,
-          ticketId: ticket.ticket_id || ticket.ticketId,
-          message: assignmentDetails.message,
-          deadline: assignmentDetails.deadline,
-        }),
+      const response = await workerAPI.assign({
+        workerId: selectedWorker.worker_id,
+        ticketId: ticket.ticket_id || ticket.ticketId,
+        ...assignmentDetails,
       });
-      
-      if (response.ok) {
+
+      if (response?.data?.success !== false) {
         if (onAssign) {
           await onAssign({
             workerId: selectedWorker.worker_id,

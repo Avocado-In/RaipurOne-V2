@@ -1,51 +1,64 @@
 import { renderHook, act } from '@testing-library/react';
 import { useTheme } from '../hooks/useTheme';
 
+// The hook is a deliberate two-mode switcher: light or dark, persisted under
+// `r1_theme`, applied as Tailwind's `.dark` class on <html>. An earlier three-mode
+// version with an "auto" setting and `theme-*` classes is gone.
 describe('useTheme', () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.className = '';
   });
 
-  it('should initialize with auto theme by default', () => {
+  it('defaults to light when nothing is stored', () => {
     const { result } = renderHook(() => useTheme());
-    expect(result.current.theme).toBe('auto');
+
+    expect(result.current.theme).toBe('light');
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
   });
 
-  it('should persist theme to localStorage', () => {
-    const { result } = renderHook(() => useTheme());
-    
-    act(() => {
-      result.current.setTheme('theme-dark');
-    });
+  it('restores a stored preference', () => {
+    localStorage.setItem('r1_theme', 'dark');
 
-    expect(localStorage.getItem('r1-dashboard-theme')).toBe('theme-dark');
-    expect(result.current.theme).toBe('theme-dark');
+    const { result } = renderHook(() => useTheme());
+
+    expect(result.current.theme).toBe('dark');
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
   });
 
-  it('should apply theme class to document root', () => {
-    const { result } = renderHook(() => useTheme());
-    
-    act(() => {
-      result.current.setTheme('theme-light');
-    });
+  it('ignores an unrecognised stored value rather than applying it', () => {
+    localStorage.setItem('r1_theme', 'theme-neon');
 
-    expect(document.documentElement.classList.contains('theme-light')).toBe(true);
+    const { result } = renderHook(() => useTheme());
+
+    expect(result.current.theme).toBe('light');
   });
 
-  it('should toggle between themes', () => {
+  it('persists the theme and applies the dark class', () => {
     const { result } = renderHook(() => useTheme());
-    
-    act(() => {
-      result.current.setTheme('theme-light');
-    });
-    expect(result.current.theme).toBe('theme-light');
 
     act(() => {
-      result.current.setTheme('theme-dark');
+      result.current.setTheme('dark');
     });
-    expect(result.current.theme).toBe('theme-dark');
-    expect(document.documentElement.classList.contains('theme-light')).toBe(false);
-    expect(document.documentElement.classList.contains('theme-dark')).toBe(true);
+
+    expect(localStorage.getItem('r1_theme')).toBe('dark');
+    expect(result.current.theme).toBe('dark');
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+  });
+
+  it('toggles back and forth between light and dark', () => {
+    const { result } = renderHook(() => useTheme());
+
+    act(() => {
+      result.current.toggleTheme();
+    });
+    expect(result.current.theme).toBe('dark');
+    expect(document.documentElement.classList.contains('dark')).toBe(true);
+
+    act(() => {
+      result.current.toggleTheme();
+    });
+    expect(result.current.theme).toBe('light');
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
   });
 });

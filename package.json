@@ -1,0 +1,12 @@
+{
+  "name": "raipurone-v2",
+  "version": "2.0.0",
+  "private": true,
+  "description": "RaipurOne Smart Grievance Management System - tooling root (Supabase CLI)",
+  "scripts": {
+    "supabase": "supabase"
+  },
+  "devDependencies": {
+    "supabase": "^2.117.0"
+  }
+}

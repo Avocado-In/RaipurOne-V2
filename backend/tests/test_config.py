@@ -34,3 +34,7 @@ def test_find_env_file_ignores_env_new_and_examples(tmp_path):
     found = config.find_env_file(core_dir / "config.py")
 
     assert found == workspace_root / ".env"
+
+
+def test_default_ai_provider_prefers_local_model_mode():
+    assert config.settings.ai_provider == "local_model"

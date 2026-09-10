@@ -1,6 +1,12 @@
-﻿import os
+import os
 from pathlib import Path
 from pydantic import BaseModel
+
+
+# A directory holding one of these is a project root. The upward walk stops there even
+# when it has no .env yet: climbing past it would silently adopt an unrelated .env from
+# an ancestor - a home directory, say - and point the app at another project's Supabase.
+_PROJECT_ROOT_MARKERS = (".env.example", ".env.new", ".git")
 
 
 def find_env_file(start: Path | None = None) -> Path:
@@ -13,6 +19,8 @@ def find_env_file(start: Path | None = None) -> Path:
     for root in search_roots:
         candidate = root / ".env"
         if candidate.exists():
+            return candidate
+        if any((root / marker).exists() for marker in _PROJECT_ROOT_MARKERS):
             return candidate
     return root_dir / ".env"
 
@@ -27,22 +35,40 @@ class Settings(BaseModel):
     supabase_anon_key: str = ""
     telegram_bot_token: str = ""
     storage_mode: str = "memory"
-    ai_provider: str = "rule_based"
+    ai_provider: str = "local_model"
     auth_mode: str = "demo"
+    # When Supabase is unreachable the repositories can serve hardcoded demo records.
+    # That is useful offline, and dangerous anywhere real: an operator sees invented
+    # civic data with no indication it is fake. Off unless explicitly switched on.
+    allow_demo_fallback: bool = False
+    require_auth: bool = True
+
+
+# Values the project's .env owns outright. A stale machine-wide export of one of
+# these (for example a service-role key left over from another Supabase project)
+# would otherwise silently point the app at the wrong backend.
+_ENV_FILE_WINS = {
+    "SUPABASE_URL",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_ANON_KEY",
+    "TELEGRAM_BOT_TOKEN",
+}
 
 
 def _load_environment() -> None:
     env_file = find_env_file(Path(__file__).resolve())
     if not env_file.exists():
         return
-    for raw_line in env_file.read_text(encoding="utf-8").splitlines():
+    for raw_line in env_file.read_text(encoding="utf-8-sig").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
         key = key.strip()
         value = value.strip().strip('"').strip("'")
-        if key and key not in os.environ:
+        if not key or not value:
+            continue
+        if key in _ENV_FILE_WINS or key not in os.environ:
             os.environ[key] = value
 
 
@@ -57,6 +83,8 @@ settings = Settings(
     supabase_anon_key=os.getenv("SUPABASE_ANON_KEY", ""),
     telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
     storage_mode=os.getenv("STORAGE_MODE", "supabase" if os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_ROLE_KEY") else "memory").lower(),
-    ai_provider=os.getenv("AI_PROVIDER", "rule_based").lower(),
+    ai_provider=os.getenv("AI_PROVIDER", "local_model").lower(),
     auth_mode=os.getenv("AUTH_MODE", "demo").lower(),
+    allow_demo_fallback=os.getenv("ALLOW_DEMO_FALLBACK", "false").lower() in {"1", "true", "yes", "on"},
+    require_auth=os.getenv("REQUIRE_AUTH", "true").lower() in {"1", "true", "yes", "on"},
 )

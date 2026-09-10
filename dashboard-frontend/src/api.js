@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getOfflinePayload } from './offlineData';
+import { getStoredToken } from './context/AuthContext';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
 
@@ -11,9 +12,23 @@ const axiosInstance = axios.create({
   },
 });
 
+axiosInstance.interceptors.request.use((config) => {
+  const token = getStoredToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
 const createAbortController = () => new AbortController();
 
+// Serving invented civic data when the backend is unreachable used to be silent - an
+// operator saw fabricated tickets and stats with only a console warning as the tell.
+// It is now opt-in via REACT_APP_ALLOW_DEMO_DATA and always announced on screen.
+const DEMO_DATA_ENABLED = process.env.REACT_APP_ALLOW_DEMO_DATA === 'true';
+
+export const DEMO_MODE_EVENT = 'raipurone:demo-data-served';
+
 const shouldUseOfflineFallback = (endpoint) => {
+  if (!DEMO_DATA_ENABLED) return false;
   const normalized = endpoint || '';
   return normalized.includes('/dashboard/stats')
     || normalized.includes('/tickets')
@@ -29,6 +44,8 @@ const runWithFallback = async (requestFn, endpoint) => {
   } catch (error) {
     if (shouldUseOfflineFallback(endpoint)) {
       console.warn(`Using offline demo data for ${endpoint}`);
+      // Tell the UI so it can show a banner; fake data must never look real.
+      window.dispatchEvent(new CustomEvent(DEMO_MODE_EVENT, { detail: { endpoint } }));
       return getOfflinePayload(endpoint);
     }
     throw error;
@@ -114,6 +131,18 @@ export const ticketAPI = {
   },
 };
 
+export const complaintAPI = {
+  getAllComplaints: (signal) => {
+    return retryRequest(() => axiosInstance.get('/complaints', { signal }), '/complaints');
+  },
+  getComplaintById: (complaintId, signal) => {
+    return retryRequest(() => axiosInstance.get(`/complaints/${complaintId}`, { signal }), `/complaints/${complaintId}`);
+  },
+  createComplaint: (complaintData) => {
+    return axiosInstance.post('/complaints/json', complaintData);
+  },
+};
+
 export const analysisAPI = {
   analyzeSingleTicket: (ticketId, signal) => {
     return axiosInstance.post(`/analysis/analyze/${ticketId}`, {}, { signal });
@@ -131,6 +160,19 @@ export const analysisAPI = {
     return retryRequest(() => 
       axiosInstance.get(`/analysis/departments/${department}`, { signal })
     , '/analysis/departments/stats');
+  },
+};
+
+// Worker endpoints require a staff token. Callers used to reach these with bare axios
+// (and, in one place, the wrong /api/... prefix), so they came back 401/404 and the
+// assignment UI silently showed an empty worker list.
+export const workerAPI = {
+  getAvailable: (department, category, signal) => {
+    return axiosInstance.get('/workers/available', { params: { department, category }, signal });
+  },
+
+  assign: (assignmentData, signal) => {
+    return axiosInstance.post('/workers/assign', assignmentData, { signal });
   },
 };
 

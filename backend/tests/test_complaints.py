@@ -33,7 +33,7 @@ def test_create_complaint_persists_and_returns_payload():
     assert payload['status'] == 'submitted'
 
 
-def test_assign_complaint_updates_department_priority_and_status():
+def test_assign_complaint_requires_staff_authentication():
     response = client.post(
         '/complaints/CMP-1024/assign',
         json={
@@ -42,11 +42,34 @@ def test_assign_complaint_updates_department_priority_and_status():
             'status': 'assigned',
         },
     )
+    assert response.status_code == 401
+
+
+def test_assign_complaint_updates_department_priority_and_status(staff_headers):
+    response = client.post(
+        '/complaints/CMP-1024/assign',
+        json={
+            'department': 'Sanitation',
+            'priority': 'high',
+            'status': 'assigned',
+        },
+        headers=staff_headers,
+    )
     assert response.status_code == 200
     payload = response.json()
     assert payload['department'] == 'Sanitation'
     assert payload['priority'] == 'high'
     assert payload['status'] == 'assigned'
+
+
+def test_analyze_complaint_reclassifies_and_updates_ai_payload(staff_headers):
+    response = client.post('/complaints/CMP-1024/analyze', headers=staff_headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['id'] == 'CMP-1024'
+    assert payload['category'] in {'Sanitation', 'Street Lights', 'Water Supply', 'Health care', 'road', 'Others'}
+    assert payload['priority'] in {'high', 'medium'}
+    assert 'ai_analysis' in payload
 
 
 def test_notifications_endpoint_returns_seed_data():

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ticketAPI, geminiAPI } from '../api';
+import { ticketAPI, geminiAPI, imageAPI } from '../api';
 import AIAnalysisPanel from '../components/AIAnalysisPanel';
 import WorkerAssignmentModal from '../components/WorkerAssignmentModal';
 
@@ -16,6 +16,34 @@ const priorityColors = {
   medium: 'bg-black/50 dark:bg-white/50',
   high: 'bg-black dark:bg-white',
 };
+
+// Mirrors ALLOWED_TRANSITIONS in backend/app/core/domain.py. The page used to offer
+// fixed actions regardless of where the complaint was, so "Assign to Worker" and
+// "Close Ticket" on a freshly submitted complaint both asked for a jump the API
+// rejects with 409.
+const ALLOWED_TRANSITIONS = {
+  submitted: ['assigned', 'rejected'],
+  assigned: ['in_progress', 'submitted', 'rejected'],
+  in_progress: ['under_review', 'resolved', 'assigned'],
+  under_review: ['resolved', 'in_progress', 'rejected'],
+  resolved: ['closed', 'in_progress'],
+  closed: [],
+  rejected: [],
+};
+
+const STATUS_ACTION_LABELS = {
+  assigned: 'Mark Assigned',
+  in_progress: 'Start Work',
+  under_review: 'Send for Review',
+  resolved: 'Mark Resolved',
+  closed: 'Close Ticket',
+  rejected: 'Reject',
+  submitted: 'Send Back',
+};
+
+const canonicalStatus = (value) => String(value || '').trim().toLowerCase().replace(/[\s-]/g, '_');
+
+const nextStatusesFor = (value) => ALLOWED_TRANSITIONS[canonicalStatus(value)] || [];
 
 function TicketDetail() {
   const { id } = useParams();
@@ -91,18 +119,19 @@ function TicketDetail() {
 
   const fetchImages = async () => {
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
-      const endpoint = `${apiUrl}/images/ticket/${id}`;
-      const response = await fetch(endpoint);
-      const data = await response.json();
-      
+      // Must go through the axios instance: /images/ticket/{id} requires a bearer token
+      // and only that instance attaches one. A raw fetch() got 401 for every complaint,
+      // so `data.success` was undefined and the gallery silently stayed empty.
+      const response = await imageAPI.getTicketImages(id);
+      const data = response?.data || {};
+
       if (data.success && data.images) {
         const normalizedImages = data.images.map((img) => ({
           ...img,
           url: img.url || img.storage_url || img.storageUrl || img.publicUrl || '',
           mimeType: img.mimeType || img.mime_type || 'image/jpeg', // Normalize mimeType field
         }));
-        console.log('ðŸ“¸ Fetched media files:', normalizedImages);
+        console.log('📸 Fetched media files:', normalizedImages);
         setImages(normalizedImages);
       }
     } catch (error) {
@@ -138,7 +167,10 @@ function TicketDetail() {
       return true;
     } catch (error) {
       console.error('Error updating status:', error);
-      alert(`Failed to update status: ${error.message || 'Unknown error'}`);
+      // The API explains an illegal lifecycle jump in `detail`; axios's own message is
+      // only "Request failed with status code 409", which tells the operator nothing.
+      const reason = error?.response?.data?.detail || error.message || 'Unknown error';
+      alert(`Failed to update status: ${reason}`);
       return false;
     } finally {
       setUpdating(false);
@@ -150,20 +182,23 @@ function TicketDetail() {
   };
 
   const handleWorkerAssigned = async (worker) => {
-    // Update ticket status to in-progress
-    const success = await handleStatusChange('in-progress');
+    // 'assigned' is the state the lifecycle actually moves to here. Asking for
+    // 'in-progress' from 'submitted' is an illegal jump and came back as a 409.
+    const success = await handleStatusChange('assigned');
     if (success) {
       setShowWorkerModal(false);
     }
   };
 
-  const handleCloseTicket = async () => {
-    const confirmed = window.confirm('Are you sure you want to close this ticket?');
-    if (confirmed) {
-      const success = await handleStatusChange('closed');
-      if (success) {
-        alert('âœ… Ticket closed successfully!');
-      }
+  const handleTransition = async (target) => {
+    if (target === 'closed' || target === 'rejected') {
+      const label = target === 'closed' ? 'close' : 'reject';
+      if (!window.confirm(`Are you sure you want to ${label} this ticket?`)) return;
+    }
+
+    const success = await handleStatusChange(target);
+    if (success && (target === 'closed' || target === 'rejected')) {
+      alert(`Ticket ${target === 'closed' ? 'closed' : 'rejected'} successfully.`);
     }
   };
 
@@ -285,7 +320,7 @@ function TicketDetail() {
 
                 {/* Media Type Badge */}
                 <div className="absolute top-4 right-4 px-3 py-1 bg-black/80 dark:bg-white/80 backdrop-blur-sm text-white dark:text-black rounded-lg text-xs font-medium">
-                  {selectedImage?.mimeType?.startsWith('video/') ? 'ðŸŽ¥ Video' : 'ðŸ“¸ Photo'}
+                  {selectedImage?.mimeType?.startsWith('video/') ? '🎥 Video' : '📸 Photo'}
                 </div>
 
                 {/* Transcribe Button - Only for images */}
@@ -397,14 +432,14 @@ function TicketDetail() {
                             <span className="text-xs font-semibold text-black/60 dark:text-white/60 uppercase tracking-wide">GPS Coordinates:</span>
                           </div>
                           <div className="flex items-center gap-3 bg-white dark:bg-black rounded-lg px-4 py-3 border border-black/10 dark:border-white/10">
-                            <span className="text-2xl">ðŸ“</span>
+                            <span className="text-2xl">📍</span>
                             <span className="text-base font-mono font-semibold text-black dark:text-white">
                               {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
                             </span>
                             <button
                               onClick={() => {
                                 navigator.clipboard.writeText(`${location.lat}, ${location.lng}`);
-                                alert('ðŸ“‹ Coordinates copied to clipboard!');
+                                alert('📋 Coordinates copied to clipboard!');
                               }}
                               className="ml-auto p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-colors"
                               title="Copy coordinates"
@@ -419,7 +454,7 @@ function TicketDetail() {
                         {/* Address/Location String */}
                         {ticketData.location && typeof ticketData.location === 'string' && !ticketData.location.match(/^-?\d+\.?\d*,\s*-?\d+\.?\d*$/) && (
                           <div className="flex items-start gap-3 bg-white dark:bg-black rounded-lg px-4 py-3 border border-black/10 dark:border-white/10">
-                            <span className="text-xl">ðŸ—ºï¸</span>
+                            <span className="text-xl">🗺️</span>
                             <p className="text-sm text-black/80 dark:text-white/80 leading-relaxed flex-1">
                               {ticketData.location}
                             </p>
@@ -460,13 +495,13 @@ function TicketDetail() {
               {/* Metadata - Reporter & Date */}
               <div className="grid grid-cols-2 gap-6 pt-4 border-t border-black/10 dark:border-white/10">
                 <div className="bg-black/5 dark:bg-white/5 rounded-xl p-4 border border-black/10 dark:border-white/10">
-                  <p className="text-xs text-black/60 dark:text-white/60 mb-2 uppercase tracking-wide font-semibold">ðŸ‘¤ Reporter</p>
+                  <p className="text-xs text-black/60 dark:text-white/60 mb-2 uppercase tracking-wide font-semibold">👤 Reporter</p>
                   <p className="text-lg font-bold text-black dark:text-white">
                     {ticketData.first_name || ticketData.firstName || ticketData.username || 'Anonymous'}
                   </p>
                 </div>
                 <div className="bg-black/5 dark:bg-white/5 rounded-xl p-4 border border-black/10 dark:border-white/10">
-                  <p className="text-xs text-black/60 dark:text-white/60 mb-2 uppercase tracking-wide font-semibold">ðŸ“… Date & Time</p>
+                  <p className="text-xs text-black/60 dark:text-white/60 mb-2 uppercase tracking-wide font-semibold">📅 Date & Time</p>
                   <p className="text-sm font-bold text-black dark:text-white">
                     {new Date(ticketData.created_at || ticketData.createdAt).toLocaleString('en-US', {
                       year: 'numeric',
@@ -486,27 +521,43 @@ function TicketDetail() {
             </div>
 
             {/* Action Buttons - Bottom */}
-            <div className="px-6 md:px-8 pb-6 md:pb-8 flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={handleOpenWorkerModal}
-                disabled={updating || ticketData.status === 'closed'}
-                className="flex-1 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg hover:shadow-xl hover:scale-[1.02]"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                </svg>
-                Assign to Worker
-              </button>
-              <button
-                onClick={handleCloseTicket}
-                disabled={updating || ticketData.status === 'closed'}
-                className="flex-1 px-6 py-3 bg-black/10 dark:bg-white/10 text-black dark:text-white border-2 border-black/20 dark:border-white/20 rounded-xl font-semibold hover:bg-black/20 dark:hover:bg-white/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 hover:scale-[1.02]"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {ticketData.status === 'closed' ? 'Ticket Closed' : 'Close Ticket'}
-              </button>
+            {/* Only the moves the API will actually accept from this status are offered. */}
+            <div className="px-6 md:px-8 pb-6 md:pb-8 flex flex-col sm:flex-row flex-wrap gap-3">
+              {nextStatusesFor(ticketData.status).includes('assigned') && (
+                <button
+                  onClick={handleOpenWorkerModal}
+                  disabled={updating}
+                  className="flex-1 min-w-[12rem] px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg hover:shadow-xl hover:scale-[1.02]"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                  </svg>
+                  Assign to Worker
+                </button>
+              )}
+
+              {nextStatusesFor(ticketData.status)
+                .filter((target) => target !== 'assigned')
+                .map((target) => (
+                  <button
+                    key={target}
+                    onClick={() => handleTransition(target)}
+                    disabled={updating}
+                    className={`flex-1 min-w-[12rem] px-6 py-3 rounded-xl font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 hover:scale-[1.02] ${
+                      target === 'rejected'
+                        ? 'bg-red-500 hover:bg-red-600 text-white shadow-lg'
+                        : 'bg-black/10 dark:bg-white/10 text-black dark:text-white border-2 border-black/20 dark:border-white/20 hover:bg-black/20 dark:hover:bg-white/20'
+                    }`}
+                  >
+                    {STATUS_ACTION_LABELS[target] || target}
+                  </button>
+                ))}
+
+              {nextStatusesFor(ticketData.status).length === 0 && (
+                <p className="flex-1 px-6 py-3 text-sm text-black/60 dark:text-white/60 text-center">
+                  This ticket is {canonicalStatus(ticketData.status).replace(/_/g, ' ')} and can no longer change status.
+                </p>
+              )}
             </div>
           </div>
         </div>

@@ -60,7 +60,7 @@ function DepartmentView() {
     const icons = {
       roadway: '🛣️',
       cleaning: '🧹',
-      drainage: '�',
+      drainage: '🌊',
       'water-supply': '💧',
       general: '📋',
       invalid: '⚠️',

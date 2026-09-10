@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000';
+import { workerAPI } from '../api';
 
 const WorkerAssignmentModal = ({ ticket, onClose, onAssign }) => {
   const [workers, setWorkers] = useState([]);
@@ -18,12 +16,7 @@ const WorkerAssignmentModal = ({ ticket, onClose, onAssign }) => {
   const fetchAvailableWorkers = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/workers/available`, {
-        params: {
-          department: ticket.department,
-          category: ticket.category,
-        },
-      });
+      const response = await workerAPI.getAvailable(ticket.department, ticket.category);
       
       if (response.data.success) {
         setWorkers(response.data.workers || []);
@@ -64,10 +57,7 @@ const WorkerAssignmentModal = ({ ticket, onClose, onAssign }) => {
         },
       };
 
-      const response = await axios.post(
-        `${API_URL}/workers/assign`,
-        assignmentData
-      );
+      const response = await workerAPI.assign(assignmentData);
 
       if (response.data.success) {
         alert('Worker assigned successfully!');

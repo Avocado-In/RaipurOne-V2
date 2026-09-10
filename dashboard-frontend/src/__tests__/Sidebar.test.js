@@ -16,10 +16,13 @@ describe('Sidebar', () => {
     renderWithRouter(<Sidebar />);
     
     expect(screen.getByText('R1 Dashboard')).toBeInTheDocument();
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
-    expect(screen.getByText('Tickets')).toBeInTheDocument();
-    expect(screen.getByText('Statistics')).toBeInTheDocument();
-    expect(screen.getByText('Departments')).toBeInTheDocument();
+
+    // Every destination the sidebar currently offers. A stale 'Statistics' entry was
+    // asserted here long after that route was removed.
+    ['Dashboard', 'Push Notifications', 'Tickets', 'Complaints', 'Departments', 'Workers', 'Worker Submissions']
+      .forEach((label) => {
+        expect(screen.getByText(label)).toBeInTheDocument();
+      });
   });
 
   it('should toggle collapse state', () => {

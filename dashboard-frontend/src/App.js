@@ -5,17 +5,20 @@ import Sidebar from './components/Sidebar';
 import Preloader from './components/Preloader';
 import { NotificationProvider } from './context/NotificationContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import NotificationBell from './components/NotificationBell';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const PushNotifications = lazy(() => import('./pages/PushNotifications'));
 const TicketsList = lazy(() => import('./pages/TicketsList'));
 const TicketDetail = lazy(() => import('./pages/TicketDetail'));
+const Complaints = lazy(() => import('./pages/Complaints'));
 const Statistics = lazy(() => import('./pages/Statistics'));
 const DepartmentView = lazy(() => import('./pages/DepartmentView'));
 const DepartmentSegregation = lazy(() => import('./pages/DepartmentSegregation'));
 const WorkerManagement = lazy(() => import('./pages/WorkerManagement'));
 const WorkerSubmissions = lazy(() => import('./pages/WorkerSubmissions'));
+const Login = lazy(() => import('./pages/Login'));
 
 const LoadingFallback = () => (
   <div className="flex items-center justify-center min-h-screen">
@@ -28,7 +31,25 @@ const LoadingFallback = () => (
 
 const API_BASE_URL = process.env.REACT_APP_API_URL?.replace(/\/api$/, '') || 'http://127.0.0.1:8000';
 
-function App() {
+const SessionMenu = () => {
+  const { username, role, logout } = useAuth();
+  return (
+    <div className="flex items-center gap-3">
+      <div className="hidden sm:block text-right leading-tight">
+        <div className="text-sm font-medium text-black dark:text-white">{username}</div>
+        <div className="text-xs text-black/50 dark:text-white/50 capitalize">{role}</div>
+      </div>
+      <button
+        onClick={logout}
+        className="rounded-lg border border-black/15 dark:border-white/15 px-3 py-1.5 text-sm text-black dark:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+      >
+        Sign out
+      </button>
+    </div>
+  );
+};
+
+function AuthenticatedApp() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   useEffect(() => {
@@ -60,9 +81,7 @@ function App() {
   }, []);
 
   return (
-    <ErrorBoundary>
-      <ThemeProvider>
-        <NotificationProvider>
+    <>
           <Router>
             <Preloader isLoading={isInitialLoading} />
             
@@ -78,11 +97,7 @@ function App() {
                     </h1>
                     <div className="flex items-center gap-4">
                       <NotificationBell />
-                      <button className="p-2 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                        <svg className="w-6 h-6 text-black dark:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                        </svg>
-                      </button>
+                      <SessionMenu />
                     </div>
                   </div>
 
@@ -93,6 +108,7 @@ function App() {
                         <Route path="/notifications" element={<PushNotifications />} />
                         <Route path="/tickets" element={<TicketsList />} />
                         <Route path="/tickets/:id" element={<TicketDetail />} />
+                        <Route path="/complaints" element={<Complaints />} />
                         <Route path="/statistics" element={<Statistics />} />
                         <Route path="/departments" element={<DepartmentView />} />
                         <Route path="/department-segregation" element={<DepartmentSegregation />} />
@@ -105,7 +121,36 @@ function App() {
               </div>
             )}
           </Router>
-        </NotificationProvider>
+    </>
+  );
+}
+
+/** Sends unauthenticated visitors to the sign-in screen. */
+function AuthGate() {
+  const { isAuthenticated, isRestoring } = useAuth();
+
+  if (isRestoring) return <LoadingFallback />;
+
+  if (!isAuthenticated) {
+    return (
+      <Suspense fallback={<LoadingFallback />}>
+        <Login />
+      </Suspense>
+    );
+  }
+
+  return <AuthenticatedApp />;
+}
+
+function App() {
+  return (
+    <ErrorBoundary>
+      <ThemeProvider>
+        <AuthProvider>
+          <NotificationProvider>
+            <AuthGate />
+          </NotificationProvider>
+        </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

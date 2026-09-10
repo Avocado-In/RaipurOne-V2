@@ -23,6 +23,8 @@ const AnalyticsDashboard = ({ apiUrl }) => {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('7d');
+  const [loadError, setLoadError] = useState('');
+  const [isDemoData, setIsDemoData] = useState(false);
 
   const generateMockData = useCallback(() => {
     const days = timeRange === '7d' ? 7 : timeRange === '30d' ? 30 : 90;
@@ -76,13 +78,21 @@ const AnalyticsDashboard = ({ apiUrl }) => {
 
   const fetchAnalytics = useCallback(async () => {
     try {
-      const response = await axios.get(`${apiUrl}/api/analytics?range=${timeRange}`);
+      const response = await axios.get(`${apiUrl}/analytics?range=${timeRange}`);
       setAnalytics(response.data);
+      setLoadError('');
+      setIsDemoData(false);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching analytics:', error);
-      // Use mock data for demonstration
-      setAnalytics(generateMockData());
+      // Fabricated analytics used to be swapped in silently on any failure, so the
+      // homepage showed invented numbers that looked exactly like real ones.
+      if (process.env.REACT_APP_ALLOW_DEMO_DATA === 'true') {
+        setAnalytics(generateMockData());
+        setIsDemoData(true);
+      } else {
+        setLoadError('Analytics could not be loaded from the backend.');
+      }
       setLoading(false);
     }
   }, [apiUrl, generateMockData, timeRange]);
@@ -95,11 +105,27 @@ const AnalyticsDashboard = ({ apiUrl }) => {
     return <div className="analytics-loading">Loading analytics...</div>;
   }
 
+  if (loadError) {
+    return (
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+        {loadError}
+      </div>
+    );
+  }
+
   const { summary, ticketTrend, workerPerformance, departmentDistribution, statusDistribution } =
     analytics;
 
   return (
     <div className="analytics-dashboard">
+      {isDemoData && (
+        <div
+          role="alert"
+          className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-700 dark:text-amber-400"
+        >
+          ⚠️ Demo data — the backend is unreachable. These numbers are not real.
+        </div>
+      )}
       <div className="analytics-header">
         <h2>Analytics & Insights</h2>
         <div className="time-range-selector">

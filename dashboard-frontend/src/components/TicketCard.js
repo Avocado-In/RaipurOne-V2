@@ -66,7 +66,7 @@ function TicketCard({ ticket, onClick }) {
       {ticket.priority && (
         <div className="mb-3">
           <span className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide ${priorityColors[ticket.priority] || priorityColors.low}`}>
-            ðŸ”¥ {ticket.priority} PRIORITY
+            🔥 {ticket.priority} PRIORITY
           </span>
         </div>
       )}
