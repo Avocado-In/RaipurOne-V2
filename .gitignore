@@ -158,6 +158,8 @@ pids/
 *.pid
 *.seed
 *.pid.lock
+# Written by the Telegram worker to stop a second instance starting locally.
+.telegram-bot.lock
 
 # =========================================================
 # Docker
