@@ -10,7 +10,9 @@
 
 create table if not exists public.work_submissions (
   id uuid primary key default gen_random_uuid(),
-  complaint_id text not null references public.complaints(id) on delete cascade,
+  -- uuid, not text: schema.sql declares complaints.id as text but the deployed column
+  -- is uuid, and a text column here cannot carry the foreign key.
+  complaint_id uuid not null references public.complaints(id) on delete cascade,
   worker_id uuid references public.workers(id) on delete set null,
   worker_user_id uuid references public.users(id) on delete set null,
   worker_name text,
