@@ -64,9 +64,14 @@ Start-Process powershell -ArgumentList @(
 # exits if that check fails, and giving the API a head start keeps the logs readable.
 Start-Sleep -Seconds 6
 
+# AI_SERVICE_URL is set here, in the bot's window only, and deliberately not in .env.
+# The bot and the API both classify; each loading its own copy puts two ~1.1 GB models
+# in memory, which exhausts this 6 GB machine's commit limit and makes *both* silently
+# fall back to rule-based. Pointed at the API, the bot keeps one copy in the system.
+# It must stay blank for the API process, or the API becomes a remote client of itself.
 Start-Process powershell -ArgumentList @(
     '-NoExit', '-Command',
-    "Set-Location '$Root\backend'; Write-Host 'TELEGRAM BOT - @RaipurOneV2Bot' -ForegroundColor Cyan; python -m app.telegram_bot"
+    "Set-Location '$Root\backend'; `$env:AI_SERVICE_URL = 'http://localhost:8000'; Write-Host 'TELEGRAM BOT - @RaipurOneV2Bot' -ForegroundColor Cyan; python -m app.telegram_bot"
 )
 
 if ($Phone) {
