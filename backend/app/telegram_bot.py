@@ -35,6 +35,46 @@ LOCK_PATH = Path(__file__).resolve().parents[1] / ".telegram-bot.lock"
 _pending_messages: dict[int, Any] = {}
 #: chat_id -> complaint id awaiting a 1-5 rating.
 _awaiting_rating: dict[int, str] = {}
+#: One lock per chat. Updates are handled concurrently so a slow submission by one
+#: citizen no longer makes every other citizen wait; this keeps a single citizen's own
+#: messages in the order they sent them, which the pending-photo dialogue depends on.
+_chat_locks: dict[int, asyncio.Lock] = {}
+
+
+def _chat_lock(chat_id: int) -> asyncio.Lock:
+    lock = _chat_locks.get(chat_id)
+    if lock is None:
+        lock = _chat_locks.setdefault(chat_id, asyncio.Lock())
+    return lock
+
+
+def _message_text(message: Any) -> str:
+    return (getattr(message, "text", None) or getattr(message, "caption", None) or "").strip()
+
+
+def _merge_pending(pending: Any, message: Any, chat: Any) -> Any:
+    """Fold a new message into the one already waiting on the photo question.
+
+    Two things used to be dropped here, both silently. A location sent before the
+    description - the order the bot itself asks for - was overwritten by that
+    description, so the crew lost the pin the citizen had just shared. And a second
+    line of detail replaced the first instead of adding to it, so "pothole on the
+    road" followed by "near the bus stand" registered only the second half.
+    """
+    if pending is None:
+        return message
+    parts = [part for part in (_message_text(pending), _message_text(message)) if part]
+    if len(parts) == 2 and parts[0] == parts[1]:
+        parts.pop()  # A resend of the same text is not extra detail.
+    return SimpleNamespace(
+        text="\n".join(parts) or None,
+        caption=None,
+        photo=None,
+        chat=chat,
+        message_id=getattr(message, "message_id", None),
+        location=getattr(message, "location", None) or getattr(pending, "location", None),
+    )
+
 
 STATUS_LABELS = {
     "submitted": "🆕 Submitted",
@@ -96,7 +136,7 @@ def complaint_from_message(
     image_content: bytes | None = None,
     image_filename: str = "telegram-photo.jpg",
 ) -> dict:
-    text = (getattr(message, "text", None) or getattr(message, "caption", None) or "").strip()
+    text = _message_text(message)
     if not text:
         if image_content is not None:
             text = "Image complaint submitted from Telegram."
@@ -190,7 +230,12 @@ async def _send_registered(
         await context.bot.send_message(chat_id, f"⏳ {limit_message}")
         return
     repository = context.application.bot_data["complaint_repository"]
-    complaint = complaint_from_message(message, repository, image_content, image_filename)
+    # Classification and the Supabase writes are synchronous HTTP calls that take a
+    # couple of seconds. Run on the event loop they froze the whole bot for that long -
+    # every other citizen's message, including a plain /start, waited behind them.
+    complaint = await asyncio.to_thread(
+        complaint_from_message, message, repository, image_content, image_filename
+    )
     await context.bot.send_message(chat_id, _confirmation_text(complaint))
 
 
@@ -198,7 +243,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat = update.effective_chat
     if not chat:
         return
-    citizen_identity.get_or_create_citizen(chat.id)
+    await asyncio.to_thread(citizen_identity.get_or_create_citizen, chat.id)
     await context.bot.send_message(
         chat.id,
         "👋 Welcome to RaipurOne.\n\n"
@@ -245,7 +290,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     chat = update.effective_chat
     if not chat:
         return
-    complaints = citizen_identity.complaints_for_chat(chat.id, limit=5)
+    complaints = await asyncio.to_thread(citizen_identity.complaints_for_chat, chat.id, limit=5)
     if not complaints:
         await context.bot.send_message(chat.id, "You have not submitted any complaints yet.")
         return
@@ -267,7 +312,7 @@ async def rate_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     chat = update.effective_chat
     if not chat:
         return
-    complaints = citizen_identity.complaints_for_chat(chat.id, limit=10)
+    complaints = await asyncio.to_thread(citizen_identity.complaints_for_chat, chat.id, limit=10)
     resolved = [c for c in complaints if str(c.get("status")) in {"resolved", "closed"}]
     if not resolved:
         await context.bot.send_message(chat.id, "You have no resolved complaints to rate yet.")
@@ -288,16 +333,17 @@ async def reopen_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if not chat:
         return
     repository = context.application.bot_data["complaint_repository"]
-    complaints = citizen_identity.complaints_for_chat(chat.id, limit=10)
+    complaints = await asyncio.to_thread(citizen_identity.complaints_for_chat, chat.id, limit=10)
     resolved = [c for c in complaints if str(c.get("status")) == "resolved"]
     if not resolved:
         await context.bot.send_message(chat.id, "You have no resolved complaints to reopen.")
         return
 
     target = resolved[0]
-    citizen = citizen_identity.get_or_create_citizen(chat.id)
+    citizen = await asyncio.to_thread(citizen_identity.get_or_create_citizen, chat.id)
     try:
-        repository.update_complaint(
+        await asyncio.to_thread(
+            repository.update_complaint,
             str(target.get("id")),
             {"status": "in_progress", "resolution_summary": "Reopened by citizen: issue not resolved."},
             actor_user_id=(citizen or {}).get("id"),
@@ -328,12 +374,13 @@ async def _handle_rating(chat_id: int, text: str, context: ContextTypes.DEFAULT_
 
     stars = int(stripped)
     _awaiting_rating.pop(chat_id, None)
-    citizen = citizen_identity.get_or_create_citizen(chat_id)
+    citizen = await asyncio.to_thread(citizen_identity.get_or_create_citizen, chat_id)
     citizen_id = (citizen or {}).get("id")
 
     # There is no ratings table in the deployed database, so the rating is recorded as an
     # immutable audit event rather than silently dropped.
-    audit.record_change(
+    await asyncio.to_thread(
+        audit.record_change,
         "complaints",
         complaint_id,
         "citizen_rating",
@@ -347,7 +394,9 @@ async def _handle_rating(chat_id: int, text: str, context: ContextTypes.DEFAULT_
             if stars >= 3
             else citizen_identity.TRUST_FALSE_REPORT / 2
         )
-        citizen_identity.adjust_trust(citizen_id, delta, f"rated {stars}/5")
+        await asyncio.to_thread(
+            citizen_identity.adjust_trust, citizen_id, delta, f"rated {stars}/5"
+        )
 
     await context.bot.send_message(
         chat_id,
@@ -361,25 +410,31 @@ async def receive_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     chat = update.effective_chat
     if not message or not chat:
         return
+    # Serialised per chat: this citizen's messages keep the order they were sent in,
+    # even though different citizens are now handled concurrently.
+    async with _chat_lock(chat.id):
+        await _handle_message(message, chat, update.update_id, context)
+
+
+async def _handle_message(
+    message: Any, chat: Any, update_id: int, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     # Durable replay protection, unlike the in-memory set this replaces.
-    if not citizen_identity.claim_update(update.update_id, chat.id, message.message_id):
+    claimed = await asyncio.to_thread(
+        citizen_identity.claim_update, update_id, chat.id, message.message_id
+    )
+    if not claimed:
         return
-    logger.info("Telegram update received: %s", update.update_id)
+    logger.info("Telegram update received: %s", update_id)
     try:
         if message.photo:
             photo = message.photo[-1]
             telegram_file = await context.bot.get_file(photo.file_id)
             image_content = bytes(await telegram_file.download_as_bytearray())
             image_filename = f"{message.message_id}.jpg"
-            pending = _pending_messages.pop(chat.id, None)
-            if pending is not None and not (message.caption or message.text):
-                message = SimpleNamespace(
-                    text=getattr(pending, "text", None),
-                    caption=getattr(pending, "caption", None),
-                    chat=chat,
-                    message_id=message.message_id,
-                    location=getattr(pending, "location", None),
-                )
+            # Merge rather than choose: a photo sent *with* a caption used to throw away
+            # the description and the location the citizen had already sent.
+            message = _merge_pending(_pending_messages.pop(chat.id, None), message, chat)
             await _send_registered(chat.id, message, context, image_content, image_filename)
             return
 
@@ -395,7 +450,15 @@ async def receive_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             if pending is not None and answer in {"yes", "y", "ok", "okay", "haan", "ha"}:
                 await context.bot.send_message(chat.id, "Okay. Please send the photo now. You can add an optional caption.")
                 return
-            _pending_messages[chat.id] = message
+            adding_detail = bool(pending is not None and _message_text(pending))
+            _pending_messages[chat.id] = _merge_pending(pending, message, chat)
+            if adding_detail:
+                await context.bot.send_message(
+                    chat.id,
+                    "➕ Added that to your complaint.\n\n"
+                    "📷 Send a photo if you have one, or reply no (or /skip) to register it.",
+                )
+                return
             await context.bot.send_message(
                 chat.id,
                 "📷 Would you like to add a photo to this complaint?\n"
@@ -404,7 +467,9 @@ async def receive_message(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return
 
         if message.location:
-            _pending_messages[chat.id] = message
+            _pending_messages[chat.id] = _merge_pending(
+                _pending_messages.get(chat.id), message, chat
+            )
             await context.bot.send_message(
                 chat.id,
                 "📍 Location received. Now send a short description of the problem.",
@@ -434,7 +499,15 @@ async def run_bot() -> None:
             "Supabase storage or Telegram schema setup is missing. Run supabase/telegram_migration.sql first, then restart the bot."
         ) from exc
 
-    application = Application.builder().token(settings.telegram_bot_token).build()
+    # Without this the library awaits one update before reading the next, so a single
+    # citizen's submission still held everyone else up even after the blocking work
+    # moved off the event loop. Per-chat ordering is preserved by _chat_lock.
+    application = (
+        Application.builder()
+        .token(settings.telegram_bot_token)
+        .concurrent_updates(True)
+        .build()
+    )
     application.bot_data["complaint_repository"] = repository
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))

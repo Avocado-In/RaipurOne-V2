@@ -191,3 +191,140 @@ def test_start_and_help_commands_reply():
 
     assert len(bot.sent) == 2
     assert all(text.strip() for _, text in bot.sent)
+
+
+# --- the photo/location dialogue -------------------------------------------
+#
+# These drive receive_message rather than complaint_from_message, because the bugs they
+# cover lived in the conversation state, not in the record builder: everything below
+# used to be dropped on the floor while the citizen was told their complaint was
+# registered.
+
+
+class _Recorder:
+    """Stands in for the Telegram bot, the repository and the network around them."""
+
+    def __init__(self, monkeypatch):
+        self.sent = []
+        self.payloads = []
+        monkeypatch.setattr(telegram_bot, "add_notification", lambda *a, **k: {"id": "n"})
+        monkeypatch.setattr(telegram_bot.citizen_identity, "claim_update", lambda *a, **k: True)
+        monkeypatch.setattr(
+            telegram_bot.citizen_identity, "get_or_create_citizen", lambda cid: {"id": "c1", "username": "u"}
+        )
+        monkeypatch.setattr(telegram_bot.audit, "record_change", lambda *a, **k: None)
+        telegram_bot._pending_messages.clear()
+
+    def create_complaint(self, payload):
+        self.payloads.append(payload)
+        return payload
+
+    async def send_message(self, chat_id, text, **kwargs):
+        self.sent.append(text)
+
+    @property
+    def context(self):
+        return SimpleNamespace(
+            bot=self,
+            application=SimpleNamespace(bot_data={"complaint_repository": self}),
+        )
+
+
+def _dialogue_chat(chat_id=4242):
+    return SimpleNamespace(id=chat_id)
+
+
+def _dialogue_update(message, chat):
+    return SimpleNamespace(effective_message=message, effective_chat=chat, update_id=id(message))
+
+
+def _dialogue_text(text, chat, message_id):
+    return SimpleNamespace(
+        text=text, caption=None, photo=None, chat=chat, message_id=message_id, location=None
+    )
+
+
+def _deliver_dialogue(recorder, messages, chat):
+    async def run():
+        for message in messages:
+            await telegram_bot.receive_message(_dialogue_update(message, chat), recorder.context)
+
+    asyncio.run(run())
+
+
+def test_location_survives_the_description_that_follows_it(monkeypatch):
+    """The bot asks for the description after the pin; that reply used to erase the pin."""
+    recorder = _Recorder(monkeypatch)
+    chat = _dialogue_chat()
+    pin = SimpleNamespace(
+        text=None, caption=None, photo=None, chat=chat, message_id=1,
+        location=SimpleNamespace(latitude=21.25, longitude=81.63),
+    )
+    _deliver_dialogue(recorder, [
+        pin,
+        _dialogue_text("Bada gaddha hai is sadak par", chat, 2),
+        _dialogue_text("no", chat, 3),
+    ], chat)
+
+    assert len(recorder.payloads) == 1
+    assert recorder.payloads[0]["location_lat"] == 21.25
+    assert recorder.payloads[0]["location_lng"] == 81.63
+
+
+def test_second_description_line_is_added_not_replaced(monkeypatch):
+    """Two lines of detail are one complaint; the first used to be thrown away."""
+    recorder = _Recorder(monkeypatch)
+    chat = _dialogue_chat()
+    _deliver_dialogue(recorder, [
+        _dialogue_text("Sadak par gaddha hai", chat, 1),
+        _dialogue_text("bus stand ke paas", chat, 2),
+        _dialogue_text("no", chat, 3),
+    ], chat)
+
+    assert len(recorder.payloads) == 1
+    description = recorder.payloads[0]["description"]
+    assert "Sadak par gaddha hai" in description
+    assert "bus stand ke paas" in description
+
+
+def test_repeated_identical_text_is_not_duplicated(monkeypatch):
+    """A citizen resending the same line is impatience, not extra detail."""
+    recorder = _Recorder(monkeypatch)
+    chat = _dialogue_chat()
+    _deliver_dialogue(recorder, [
+        _dialogue_text("Street light kharab hai", chat, 1),
+        _dialogue_text("Street light kharab hai", chat, 2),
+        _dialogue_text("no", chat, 3),
+    ], chat)
+
+    assert recorder.payloads[0]["description"].count("Street light kharab hai") == 1
+
+
+def test_captioned_photo_keeps_the_earlier_description_and_location(monkeypatch):
+    """A caption used to replace, rather than add to, what was already sent."""
+    recorder = _Recorder(monkeypatch)
+    chat = _dialogue_chat()
+
+    class _File:
+        async def download_as_bytearray(self):
+            return bytearray(b"jpeg-bytes")
+
+    async def get_file(file_id):
+        return _File()
+
+    recorder.get_file = get_file
+    pin = SimpleNamespace(
+        text=None, caption=None, photo=None, chat=chat, message_id=1,
+        location=SimpleNamespace(latitude=21.1, longitude=81.6),
+    )
+    photo = SimpleNamespace(
+        text=None, caption="Yahan par", photo=[SimpleNamespace(file_id="f1")],
+        chat=chat, message_id=3, location=None,
+    )
+    _deliver_dialogue(recorder, [pin, _dialogue_text("Nali block hai", chat, 2), photo], chat)
+
+    assert len(recorder.payloads) == 1
+    saved = recorder.payloads[0]
+    assert "Nali block hai" in saved["description"]
+    assert "Yahan par" in saved["description"]
+    assert saved["location_lat"] == 21.1
